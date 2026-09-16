@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+openai
+pydantic-settings
+pymupdf
+numpy
+netmiko

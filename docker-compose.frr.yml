@@ -1,0 +1,81 @@
+﻿# 方案 B · FRR 真实路由协议栈（容器化）
+#
+# 目标：在 Docker 内运行 3 个 FRR（Free Range Routing）容器，
+#       用真实 OSPF/BGP 协议建邻，替换"仿真剧本"为"真实协议状态机"。
+#       Agent 通过 Netmiko → SSH → vtysh 读取真实邻居状态/路由表。
+#
+# 使用（Windows 重启、Docker 引擎就绪后）：
+#   cd C:\Users\Curry\Desktop\项目二\netops-assistant
+#   docker compose -f docker-compose.frr.yml up -d --build
+#   docker compose -f docker-compose.frr.yml ps
+#
+# 验证：
+#   ssh admin@127.0.0.1 -p 2201   # frr1 vtysh（密码 admin123）
+#   frr1> show ip ospf neighbor   # 期望 frr2 FULL/DR
+#   frr1> show ip route ospf
+#   frr3> show bgp summary        # 期望 frr2 Established
+#
+# 拓扑（两段 /29 子网，真实三层链式）：
+#   frr1(10.0.12.2) ——OSPF—— frr2(10.0.12.3 / 10.0.23.2) ——BGP(eBGP)—— frr3(10.0.23.3)
+#   管理 SSH：2201/2202/2203  → 22
+# 注意：子网用 /29 而非 /30——/30 只有 2 个可用 IP，Docker 网关会占用 .1，
+#       与容器静态 IP（.1）冲突导致 "Address already in use"。
+name: netops-frr
+
+services:
+  frr1:
+    build:
+      context: ./docker/frr
+    container_name: frr1
+    hostname: frr1
+    privileged: true
+    networks:
+      net12:
+        ipv4_address: 10.0.12.2
+    ports:
+      - "2201:22"
+    volumes:
+      - ./docker/frr/frr1.conf:/etc/frr/frr.conf:ro
+
+  frr2:
+    build:
+      context: ./docker/frr
+    container_name: frr2
+    hostname: frr2
+    privileged: true
+    networks:
+      net12:
+        ipv4_address: 10.0.12.3
+      net23:
+        ipv4_address: 10.0.23.2
+    ports:
+      - "2202:22"
+    volumes:
+      - ./docker/frr/frr2.conf:/etc/frr/frr.conf:ro
+
+  frr3:
+    build:
+      context: ./docker/frr
+    container_name: frr3
+    hostname: frr3
+    privileged: true
+    networks:
+      net23:
+        ipv4_address: 10.0.23.3
+    ports:
+      - "2203:22"
+    volumes:
+      - ./docker/frr/frr3.conf:/etc/frr/frr.conf:ro
+
+networks:
+  net12:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.12.0/29
+  net23:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.23.0/29
+

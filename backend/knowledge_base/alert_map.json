@@ -1,0 +1,186 @@
+{
+  "version": "1.0",
+  "description": "L3 告警映射层：告警类型 → 可能根因 → 指向手册/案例（确定性路由，不走 RAG）。",
+  "alerts": [
+    {
+      "alarm_type": "LINK_FLAPPING",
+      "name": "端口频繁 Up/Down（链路抖动）",
+      "keywords": ["端口抖动", "链路抖动", "反复 up", "反复 down", "时通时断", "断网重连", "flapping", "一会通一会断", "频繁掉线", "网断了", "老是断网", "老掉线", "网络不稳定"],
+      "possible_causes": ["物理层：光纤/网线接触不良或损坏", "光模块收发光功率异常", "协商模式/双工不匹配", "接口误码过高触发保护", "对端设备端口异常"],
+      "manuals": ["端口flapping排查手册.md"],
+      "cases": ["case-001", "case-002", "case-003"],
+      "suggested_cmds": ["display interface", "display interface brief", "display logbuffer | include link"],
+      "priority": "P1"
+    },
+    {
+      "alarm_type": "OPTICAL_POWER_LOW",
+      "name": "光模块功率异常/光纤链路劣化",
+      "keywords": ["光模块", "收光功率", "光衰", "光纤头脏", "光纤污染", "误码", "crc error", "rx power", "光功率低"],
+      "possible_causes": ["光纤端面脏污/污染", "光纤弯折损耗过大", "光模块老化或损坏", "尾纤连接器松动", "收发功率不匹配"],
+      "manuals": ["光模块收发光功率与误码专项排查.md", "光模块与光纤链路排查.md"],
+      "cases": ["case-004"],
+      "suggested_cmds": ["display transceiver interface", "display interface", "display alarm"],
+      "priority": "P1"
+    },
+    {
+      "alarm_type": "STP_TOPOLOGY_CHANGE",
+      "name": "STP 拓扑变更/二层环路",
+      "keywords": ["stp", "生成树", "拓扑变更", "topology change", "环路", "tc 报文", "广播风暴 环路"],
+      "possible_causes": ["物理环路（双上行未做聚合）", "边缘端口接入终端反复 up/down 触发 TC", "STP 优先级/开销配置不当", "BPDU 被丢弃（单向链路）"],
+      "manuals": ["STP生成树与环路排查.md"],
+      "cases": ["case-005", "case-006"],
+      "suggested_cmds": ["display stp", "display stp brief", "display stp topology-change"],
+      "priority": "P1"
+    },
+    {
+      "alarm_type": "BROADCAST_STORM",
+      "name": "广播风暴",
+      "keywords": ["广播风暴", "广播报文", "广播占比", "广播流量", "全网卡顿 广播"],
+      "possible_causes": ["二层环路导致广播泛洪", "ARP 攻击/扫描", "病毒/蠕虫广播扩散", "配置错误导致广播域过大"],
+      "manuals": ["网络广播风暴定位与处置.md"],
+      "cases": ["case-007"],
+      "suggested_cmds": ["display interface counters", "display cpu-usage", "display mac-address"],
+      "priority": "P1"
+    },
+    {
+      "alarm_type": "OSPF_NEIGHBOR_DOWN",
+      "name": "OSPF 邻居中断",
+      "keywords": ["ospf", "邻居 down", "peer down", "exstart", "mtu", "hello", "dead timer", "区域"],
+      "possible_causes": ["接口 MTU 不匹配导致 DD 报文丢弃", "hello/dead 定时器不一致", "区域 ID 或网络类型不一致", "被动接口配置错误", "认证不匹配"],
+      "manuals": ["OSPF邻居建立与故障排查.md", "OSPF多区域与特殊区域配置.md"],
+      "cases": ["case-008", "case-009"],
+      "suggested_cmds": ["display ospf peer", "display ospf error", "display ospf interface"],
+      "priority": "P1"
+    },
+    {
+      "alarm_type": "BGP_NEIGHBOR_DOWN",
+      "name": "BGP 邻居中断",
+      "keywords": ["bgp", "邻居 down", "active", "connectretry", "last down reason", "keepalive", "as 号", "地址族"],
+      "possible_causes": ["AS 号/邻居地址配置错误", "地址族未激活", "keepalive/hold 定时器不一致", "TCP 连通性（路由/防火墙）问题", "eBGP 多跳未配置"],
+      "manuals": ["BGP邻居与路由故障排查.md", "BGP路由振荡与路由策略排障.md"],
+      "cases": ["case-010", "case-011", "case-012"],
+      "suggested_cmds": ["display bgp peer", "display bgp error", "ping 对端地址"],
+      "priority": "P1"
+    },
+    {
+      "alarm_type": "DHCP_POOL_EXHAUSTED",
+      "name": "DHCP 地址池耗尽/获取失败",
+      "keywords": ["dhcp", "地址池", "拿不到地址", "获取不到", "受限", "无网络访问", "地址耗尽", "naK", "pool"],
+      "possible_causes": ["地址池耗尽（租约未释放）", "租期配置过长", "中继配置错误", "冲突地址未处理", "DHCP 服务异常"],
+      "manuals": ["DHCP无法获取IP地址排查.md"],
+      "cases": ["case-013", "case-014"],
+      "suggested_cmds": ["display dhcp pool", "display ip pool", "display dhcp server statistics"],
+      "priority": "P1"
+    },
+    {
+      "alarm_type": "LINK_CONGESTION",
+      "name": "链路拥塞/带宽打满",
+      "keywords": ["拥塞", "带宽打满", "流量跑满", "网络卡", "延迟高", "丢包", "拥塞丢包", "带宽占用"],
+      "possible_causes": ["某应用/主机占满带宽（P2P/备份/攻击）", "链路容量不足", "队列/调度策略缺失", "环路导致流量泛洪", "入向流量突增"],
+      "manuals": ["网络时延与拥塞排查.md", "端口镜像与抓包分析.md"],
+      "cases": ["case-015", "case-016"],
+      "suggested_cmds": ["display interface", "display traffic statistic", "display qos statistics"],
+      "priority": "P2"
+    },
+    {
+      "alarm_type": "CPU_HIGH",
+      "name": "设备 CPU 高占用",
+      "keywords": ["cpu", "cpu 高", "cpu 90", "cpu 100", "cpu 占用高"],
+      "possible_causes": ["广播/组播风暴冲击 CPU", "路由协议震荡（OSPF/BGP 频繁计算）", "攻击流量上送 CPU", "硬件故障/老化"],
+      "manuals": ["设备CPU高占用排查.md"],
+      "cases": ["case-017"],
+      "suggested_cmds": ["display cpu-usage", "display cpu-usage history", "display process cpu"],
+      "priority": "P2"
+    },
+    {
+      "alarm_type": "CONFIG_LOST",
+      "name": "配置丢失/重启后配置异常",
+      "keywords": ["配置丢失", "重启后配置", "配置没了", "出厂状态", "save", "配置不保存", "重启丢配置"],
+      "possible_causes": ["未执行 save 保存配置", "配置文件损坏", "Flash 故障", "启动配置文件指向错误"],
+      "manuals": ["配置备份与设备重启规范.md"],
+      "cases": ["case-018"],
+      "suggested_cmds": ["display startup", "display saved-configuration", "display current-configuration"],
+      "priority": "P2"
+    },
+    {
+      "alarm_type": "ARP_CONFLICT",
+      "name": "ARP 冲突/欺骗",
+      "keywords": ["arp", "mac 地址", "arp 冲突", "arp 欺骗", "伪造网关", "mac 一直在变", "掉线 网关"],
+      "possible_causes": ["终端手动配置冲突 IP", "ARP 欺骗攻击（仿冒网关）", "环路导致 ARP 报文震荡", "虚拟化 MAC 漂移"],
+      "manuals": ["ARP冲突与欺骗专项排查.md", "ARP与二层通信故障排查.md"],
+      "cases": ["case-019"],
+      "suggested_cmds": ["display arp", "display mac-address", "display logbuffer | include ARP"],
+      "priority": "P1"
+    },
+    {
+      "alarm_type": "ACL_DENY",
+      "name": "ACL 拦截/策略不通",
+      "keywords": ["acl", "访问控制", "策略不通", "匹配计数", "deny", "放行了还是不通"],
+      "possible_causes": ["ACL 规则顺序错误（隐含 deny）", "匹配计数增长但业务通（非关键流量）", "ACL 未应用到接口/方向错误", "与防火墙策略叠加冲突"],
+      "manuals": ["ACL访问控制列表配置与排障.md", "防火墙安全策略与会话表排查.md"],
+      "cases": [],
+      "suggested_cmds": ["display acl", "display traffic-filter", "display packet-filter"],
+      "priority": "P2"
+    },
+    {
+      "alarm_type": "ROUTE_FLAKY",
+      "name": "路由不稳定/跨网段时通时断",
+      "keywords": ["跨网段", "路由表", "下一跳", "时通时断 路由", "默认路由", "静态路由", "路由优先级"],
+      "possible_causes": ["静态路由下一跳不可达", "动态协议与静态路由优先级冲突", "等价路由负载不均", "链路质量差导致路由震荡"],
+      "manuals": ["静态路由与默认路由排障.md", "路由重分发与路由优先级排障.md"],
+      "cases": ["case-020"],
+      "suggested_cmds": ["display ip routing-table", "display ip routing-table static", "tracert"],
+      "priority": "P1"
+    },
+    {
+      "alarm_type": "DNS_FAILURE",
+      "name": "DNS 解析故障",
+      "keywords": ["dns", "域名解析", "解析不出来", "域名打不开", "dns 服务器"],
+      "possible_causes": ["DNS 服务器不可达", "解析记录错误/未同步", "客户端指向错误 DNS", "上游递归异常"],
+      "manuals": ["DNS域名解析故障排查.md"],
+      "cases": [],
+      "suggested_cmds": ["nslookup", "ping DNS服务器", "display dns"],
+      "priority": "P2"
+    },
+    {
+      "alarm_type": "NAT_FAILURE",
+      "name": "NAT 地址转换异常",
+      "keywords": ["nat", "地址转换", "上不了外网", "公网", "端口映射", "内网访问外网"],
+      "possible_causes": ["NAT 策略未配置/未应用", "地址池耗尽", "会话表满", "与路由/防火墙策略冲突"],
+      "manuals": ["NAT地址转换配置与排障.md", "防火墙安全策略与会话表排查.md"],
+      "cases": [],
+      "suggested_cmds": ["display nat session", "display nat address-group", "display firewall session"],
+      "priority": "P2"
+    },
+    {
+      "alarm_type": "VRRP_FAILOVER",
+      "name": "VRRP 主备切换异常",
+      "keywords": ["vrrp", "网关冗余", "主备切换", "虚拟网关", "业务全断 切换"],
+      "possible_causes": ["VRRP 优先级/抢占配置错误", "心跳链路故障导致双主", "VRRP 版本/认证不匹配", "上行链路跟踪未配置"],
+      "manuals": ["VRRP网关冗余故障排查.md"],
+      "cases": ["case-021"],
+      "suggested_cmds": ["display vrrp", "display vrrp brief"],
+      "priority": "P1"
+    },
+    {
+      "alarm_type": "SNMP_UNREACHABLE",
+      "name": "SNMP 网管不通",
+      "keywords": ["snmp", "网管平台", "收不到告警", "网管不通", "snmp 采集"],
+      "possible_causes": ["SNMP 社区串/版本不匹配", "ACL 限制网管访问", "设备 SNMP 未启用", "UDP 161 被防火墙拦截"],
+      "manuals": ["SNMP网管不通排查.md"],
+      "cases": [],
+      "suggested_cmds": ["display snmp-agent", "snmpwalk 测试"],
+      "priority": "P3"
+    },
+    {
+      "alarm_type": "WIFI_AP_OFFLINE",
+      "name": "无线 AP 离线",
+      "keywords": ["ap 离线", "无线", "wifi", "ap 掉线", "连不上 wifi", "ap 状态"],
+      "possible_causes": ["AP 供电异常（PoE 功率不足）", "AP 与 AC 间链路故障", "AP 版本/证书不匹配", "AC 下 AP 数量超限"],
+      "manuals": ["无线AP离线与漫游故障排查.md"],
+      "cases": [],
+      "suggested_cmds": ["display ap all", "display ap online", "display poe-power"],
+      "priority": "P3"
+    }
+  ]
+}

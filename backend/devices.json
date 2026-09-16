@@ -1,0 +1,64 @@
+{
+  "devices": [
+    {
+      "name": "core-sw-1",
+      "host": "127.0.0.1",
+      "port": 2222,
+      "device_type": "huawei",
+      "username": "admin",
+      "password": "admin123",
+      "role": "核心交换机",
+      "note": "仿真 SSH 服务端（backend/app/sim_ssh.py）；DEVICE_MODE=real 时 Netmiko 走真实 SSH 协议栈连接"
+    },
+    {
+      "name": "core-rtr-1",
+      "host": "127.0.0.1",
+      "port": 2223,
+      "device_type": "huawei",
+      "username": "admin",
+      "password": "admin123",
+      "role": "核心路由器",
+      "note": "仿真 SSH 服务端（backend/app/sim_ssh.py）；DEVICE_MODE=real 时 Netmiko 走真实 SSH 协议栈连接"
+    },
+    {
+      "name": "fw-1",
+      "host": "127.0.0.1",
+      "port": 2224,
+      "device_type": "huawei",
+      "username": "admin",
+      "password": "admin123",
+      "role": "防火墙（USG）",
+      "note": "仿真 SSH 服务端（backend/app/sim_ssh.py）；DEVICE_MODE=real 时 Netmiko 走真实 SSH 协议栈连接"
+    },
+    {
+      "name": "frr1",
+      "host": "127.0.0.1",
+      "port": 2201,
+      "device_type": "frr",
+      "username": "admin",
+      "password": "admin123",
+      "role": "路由器（FRR/OSPF）",
+      "note": "方案 B：FRR 容器真实协议栈（docker-compose.frr.yml），仅 DEVICE_MODE=real 可用；vtysh 读真实邻居/路由表"
+    },
+    {
+      "name": "frr2",
+      "host": "127.0.0.1",
+      "port": 2202,
+      "device_type": "frr",
+      "username": "admin",
+      "password": "admin123",
+      "role": "路由器（FRR/OSPF+eBGP）",
+      "note": "方案 B：FRR 容器真实协议栈（docker-compose.frr.yml），仅 DEVICE_MODE=real 可用"
+    },
+    {
+      "name": "frr3",
+      "host": "127.0.0.1",
+      "port": 2203,
+      "device_type": "frr",
+      "username": "admin",
+      "password": "admin123",
+      "role": "路由器（FRR/eBGP）",
+      "note": "方案 B：FRR 容器真实协议栈（docker-compose.frr.yml），仅 DEVICE_MODE=real 可用"
+    }
+  ]
+}
