@@ -109,7 +109,7 @@ async def chat(req: ChatRequest, request: Request):
         answer_parts: list[str] = []
         try:
             if is_agent_intent(req.message):
-                async for event in agent_runner.run_agent(req.message, req.history, role=role):
+                async for event in agent_runner.run_agent(req.message, req.history, role=role, session_id=req.session_id):
                     if event.get("type") == "tool":
                         audit.log("tool", actor=role, action=event.get("tool", ""),
                                   detail=json.dumps({"args": event.get("args"), "ok": event.get("ok")},

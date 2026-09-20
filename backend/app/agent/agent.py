@@ -11,10 +11,14 @@
 """
 import json
 import re
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from app.config import settings
+from app.agent.devices import find_device, get_devices
+from app.agent.registry import registry
+from app.agent.trace import AgentTrace
 from app.agent.tools import TOOLS, execute_tool
 from app.llm.zhipu_client import complete_json, stream_chat
 
@@ -167,14 +171,18 @@ def _final_messages(history: list[dict], message: str, tool_messages: list[dict]
     return msgs
 
 
-async def run_agent(message: str, history: list[dict], role: str = "operator") -> AsyncIterator[dict]:
+async def run_agent(message: str, history: list[dict], role: str = "operator",
+                    session_id: str | None = None) -> AsyncIterator[dict]:
     """运行 Agent，产出 SSE 事件：
-    - {"type":"tool", "tool","args","result","ok"}  工具调用过程
+    - {"type":"thinking", "step","text"}              LLM 原始决策（用户可见思考过程）
+    - {"type":"tool", "tool","args","result","ok"}   工具调用过程
     - {"type":"delta", "content"}                    最终回答流式文本
     - {"type":"done"}
     - {"type":"error", "message"}
     role：RBAC 角色，透传给工具层（viewer 不能调用设备工具）。
+    session_id：用于 trace 落盘（backend/data/traces/<session_id>/）。
     """
+    trace = AgentTrace(session_id)
     tool_messages: list[dict] = []
     steps = 0
     # 最近成功操作的设备：LLM 拼接格式常丢 device 参数，缺省时用上下文补上
@@ -185,6 +193,11 @@ async def run_agent(message: str, history: list[dict], role: str = "operator") -
     MIN_TOOLS = 3
     retry_for_tools = 0
     MAX_RETRY = 4
+    # 工具名/参数幻觉重试：模型编了不存在的工具或设备时回灌纠正，最多 N 次
+    hallucination_retries = 0
+    MAX_HALLU_RETRIES = 2
+    available_tools = ", ".join(registry.names())
+    available_devices = ", ".join(d.name for d in get_devices())
 
     def _tool_count() -> int:
         return sum(1 for m in tool_messages if m.get("role") == "tool")
@@ -239,6 +252,7 @@ async def run_agent(message: str, history: list[dict], role: str = "operator") -
             decision_text = await complete_json(_decision_messages(history, message, tool_messages))
             # 把 LLM 的原始决策透传给前端，让用户看到思考过程
             yield {"type": "thinking", "step": steps, "text": decision_text[:800]}
+            trace.log(type="thought", step=steps, text=decision_text[:1500])
             parsed = _parse_react(decision_text)
 
             if parsed is None or isinstance(parsed, _Finish):
@@ -256,8 +270,51 @@ async def run_agent(message: str, history: list[dict], role: str = "operator") -
                             ),
                         }
                     )
+                    trace.log(type="insufficient_evidence_retry", step=steps, tool_count=_tool_count())
                     continue
+                trace.log(type="finish", step=steps,
+                          reason="evidence_sufficient" if _tool_count() >= MIN_TOOLS else "max_steps_or_retry")
                 break
+
+            # === 幻觉校验 1：工具名不存在 → 回灌纠正，不发 SSH ===
+            if registry.handler(parsed.name) is None:
+                hallucination_retries += 1
+                trace.log(type="hallucinated_tool", step=steps, bad_name=parsed.name)
+                tool_messages.append({"role": "assistant", "content": f"调用工具 {parsed.name}，参数 {json.dumps(parsed.arguments, ensure_ascii=False)}"})
+                tool_messages.append({
+                    "role": "tool",
+                    "content": (
+                        f"错误：你调用了不存在的工具 '{parsed.name}'。可用工具只有：{available_tools}。"
+                        "请严格从上述工具名中选择一个，重新输出 JSON："
+                        '{"action":"tool","name":"<可用工具名>","arguments":{...}}'
+                    ),
+                })
+                yield {"type": "tool", "tool": parsed.name, "args": parsed.arguments,
+                       "result": f"工具 '{parsed.name}' 不存在，已要求模型重选", "ok": False}
+                if hallucination_retries > MAX_HALLU_RETRIES:
+                    trace.log(type="error", step=steps, error="too_many_hallucinated_tools")
+                    break
+                continue
+
+            # === 幻觉校验 2：device 参数不是真实设备 → 回灌纠正 ===
+            raw_device = parsed.arguments.get("device")
+            if raw_device and find_device(raw_device) is None:
+                hallucination_retries += 1
+                trace.log(type="hallucinated_device", step=steps, bad_device=raw_device)
+                tool_messages.append({"role": "assistant", "content": f"调用工具 {parsed.name}，参数 {json.dumps(parsed.arguments, ensure_ascii=False)}"})
+                tool_messages.append({
+                    "role": "tool",
+                    "content": (
+                        f"错误：设备 '{raw_device}' 不存在。可用设备：{available_devices}。"
+                        "请改用上述设备名之一，重新输出 JSON。"
+                    ),
+                })
+                yield {"type": "tool", "tool": parsed.name, "args": parsed.arguments,
+                       "result": f"设备 '{raw_device}' 不存在，已要求模型重选", "ok": False}
+                if hallucination_retries > MAX_HALLU_RETRIES:
+                    trace.log(type="error", step=steps, error="too_many_hallucinated_devices")
+                    break
+                continue
 
             # 执行工具（缺 device 时用最近设备补上）
             tool_messages.append(
@@ -266,6 +323,7 @@ async def run_agent(message: str, history: list[dict], role: str = "operator") -
             args = dict(parsed.arguments or {})
             if not args.get("device") and last_device:
                 args["device"] = last_device
+            t_tool = time.time()
             try:
                 result = await execute_tool(parsed.name, args, role=role)
                 ok = True
@@ -283,10 +341,21 @@ async def run_agent(message: str, history: list[dict], role: str = "operator") -
                 "result": result[:600],
                 "ok": ok,
             }
+            trace.log(
+                type="tool_call", step=steps, tool=parsed.name,
+                args=parsed.arguments, ok=ok,
+                latency_ms=int((time.time() - t_tool) * 1000),
+                result_preview=result[:300],
+            )
 
         # 流式输出最终回答
+        final_t0 = time.time()
         async for chunk in stream_chat(_final_messages(history, message, tool_messages)):
             yield {"type": "delta", "content": chunk}
+        trace.log(type="final_answer", latency_ms=int((time.time() - final_t0) * 1000))
+        trace.summary(status="ok", tool_count=_tool_count(), retries=retry_for_tools + hallucination_retries)
         yield {"type": "done"}
     except Exception as exc:  # noqa: BLE001
+        trace.log(type="error", error=str(exc))
+        trace.summary(status="error", error=str(exc))
         yield {"type": "error", "message": f"Agent 异常：{exc}"}
