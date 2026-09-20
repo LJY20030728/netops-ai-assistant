@@ -100,7 +100,7 @@ def labs():
 
 # ---------------------------------------------------------------- 用例
 @pytest.mark.dock
-(labs):
+def test_ospf_cost(labs):
     """frr2 eth0 注入 ospf_cost=10000 → vtysh 可见 Cost: 10000 → 恢复后回默认。"""
     _, lab2, _ = labs
 
@@ -119,7 +119,7 @@ def labs():
 
 
 @pytest.mark.dock
-(labs):
+def test_link_down(labs):
     """frr1 eth0 shutdown → OSPF 邻居从 Full 消失 → no shutdown 后回到 Full。"""
     lab1, _, _ = labs
 
@@ -147,7 +147,7 @@ def labs():
 
 
 @pytest.mark.dock
-(labs):
+def test_bgp_neighbor_down(labs):
     """frr3 BGP 邻居 shutdown → eBGP 会话非 Established → 恢复后 PfxRcd=2。"""
     _, _, lab3 = labs
 
