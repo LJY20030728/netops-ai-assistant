@@ -8,7 +8,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688)
 ![PyWebView](https://img.shields.io/badge/pywebview-5.x-green)
-![pytest](https://img.shields.io/badge/tests-58%20passed-brightgreen)
+![pytest](https://img.shields.io/badge/tests-55%20passed%20%C2%B7%203%20skipped-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
