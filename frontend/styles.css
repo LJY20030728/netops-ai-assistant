@@ -170,3 +170,9 @@
   .tl-actor{color:var(--accent);font-weight:600;}
   .b-chat{background:#5B8DEF;} .b-tool{background:#3FA66A;} .b-frr{background:#E08E45;}
   .b-scn{background:#9B6FD6;} .b-alert{background:#EA6668;} .b-other{background:#6B7C86;}
+
+#metrics{font-size:11px;color:var(--sub);background:var(--panel2);
+  padding:3px 10px;border-radius:10px;border:1px solid var(--line);
+  font-variant-numeric:tabular-nums;white-space:nowrap;}
+#metrics .ok{color:#558B2F;}
+#metrics .warn{color:#E57373;}

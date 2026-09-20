@@ -653,3 +653,26 @@
 
   input.focus();
 })();
+
+// ===== 系统指标（每 10s 拉一次 /api/system/metrics）=====
+async function fetchMetrics() {
+  const el = document.getElementById('metrics');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/system/metrics');
+    if (!r.ok) { el.textContent = 'metrics n/a'; return; }
+    const data = await r.json();
+    const s = data.summary || {};
+    if (!s.count) { el.textContent = 'metrics: 暂无'; return; }
+    const cls = (s.error_rate && s.error_rate > 0.1) ? 'warn' : 'ok';
+    el.innerHTML =
+      `P50 <b class="${cls}">${s.latency_p50_ms}ms</b> · ` +
+      `P95 <b class="${cls}">${s.latency_p95_ms}ms</b> · ` +
+      `${s.prompt_tokens_total}+${s.completion_tokens_total} tok · ` +
+      `${s.count} req · err ${Math.round((s.error_rate||0)*100)}%`;
+  } catch (e) {
+    el.textContent = 'metrics off';
+  }
+}
+fetchMetrics();
+setInterval(fetchMetrics, 10000);
