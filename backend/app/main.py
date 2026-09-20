@@ -34,12 +34,19 @@ app = FastAPI(
     version="0.7.1",
 )
 
+# CORS：仅放行本机前端（桌面应用 / 本地开发），不再 allow_origins=["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8001",
+        "http://localhost:8001",
+        "null",  # pywebview windowed 模式 origin 为 "null"
+    ],
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 for r in (system, kb, topology, docker, sessions, sim, chat, report, alert, events):

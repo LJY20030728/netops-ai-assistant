@@ -179,13 +179,10 @@ async def run_agent(message: str, history: list[dict], role: str = "operator") -
     steps = 0
     # 最近成功操作的设备：LLM 拼接格式常丢 device 参数，缺省时用上下文补上
     last_device: str | None = None
-    # 强制取证：诊断类问题至少调用 3 个工具覆盖多证据维度（连通性/链路/协议或安全）再下结论。
-    # 工具不足时模型输出 finish 会被拦截并要求继续取证；由 MAX_STEPS 兜底防死循环。
+    # 强制取证：诊断类问题至少调用 MIN_TOOLS 个工具覆盖多证据维度
+    # （连通性/链路/协议或安全）再下结论。工具不足时模型输出 finish 会被拦截
+    # 并要求继续取证；由 MAX_STEPS 兜底防死循环。
     MIN_TOOLS = 3
-    retry_for_tools = 0
-    MAX_RETRY = 4
-    # 强制取证：诊断类问题至少调用 2 个工具收集互相印证的证据再下结论（防模型偷懒/幻觉）。
-    # 工具不足 2 次时模型输出 finish 会被拦截并要求继续取证；由 MAX_STEPS 兜底防死循环。
     retry_for_tools = 0
     MAX_RETRY = 4
 

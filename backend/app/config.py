@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     vector_backend: str = "numpy"
 
     # 安全层（M4）
-    auth_enabled: bool = False            # true 时要求 Authorization: Bearer <token>，角色由 api_tokens 决定
+    auth_enabled: bool = True             # 默认开启：本机 loopback 自动信任为 admin；远程必须带 token
     api_tokens: dict[str, str] = {}       # 环境变量 JSON：{"<token>":"viewer|operator|admin"}
     rate_limit_per_min: int = 30          # /api/chat 每 IP 每分钟上限
     audit_enabled: bool = True            # 审计日志写入 backend/data/audit.jsonl

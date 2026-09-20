@@ -5,9 +5,11 @@
 - operator（只读设备操作）：viewer + 可调用只读设备工具（命令/ping/tracert）；
 - admin   （管理）：operator + 知识库入库等管理操作。
 
-auth_enabled=false（默认，本地演示）：信任所有调用按 admin 处理；
-auth_enabled=true：需 Authorization: Bearer <token>，token 与角色由环境变量
-API_TOKENS（JSON：{"<token>":"viewer|operator|admin"}）配置。
+认证策略：
+- 本机桌面应用（pywebview / 浏览器访问 127.0.0.1:8000）：loopback 来源自动信任为 admin，
+  保证双击即用；
+- 远程来源（非 loopback）：必须带 Authorization: Bearer <token>，token 与角色由环境变量
+  API_TOKENS（JSON：{"<token>":"viewer|operator|admin"}）配置；无 token 一律按 viewer。
 """
 from fastapi import HTTPException, Request
 
@@ -15,32 +17,42 @@ from app.config import settings
 
 ROLE_LEVEL = {"viewer": 0, "operator": 1, "admin": 2}
 
+# 本机可信来源（桌面应用 / 本地开发浏览器 / pytest TestClient）
+_LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+def _is_loopback(request: Request) -> bool:
+    return bool(request.client and request.client.host in _LOOPBACK_HOSTS)
+
 
 def resolve_role(request: Request) -> str:
-    """从请求解析角色（不抛错）。
-
-    auth_enabled=false（默认，本地演示）：信任所有调用，按 admin 处理，
-    保证演示时入库/设备等全部能力可用；
-    auth_enabled=true：无令牌或令牌无效 → viewer；有效令牌按配置映射角色。
-    """
+    """从请求解析角色（不抛错）。"""
     return resolve_auth(request)[1]
 
 
 def resolve_auth(request: Request) -> tuple[bool, str]:
     """返回 (是否已认证, 角色)。
 
-    auth_enabled=false：视为已认证 admin（演示模式）；
-    auth_enabled=true：无令牌/无效令牌 → (False, "viewer")。
+    - loopback 来源：视为已认证 admin（本地桌面应用场景）；
+    - 带 Bearer token：按 API_TOKENS 映射角色；
+    - 其余远程来源：未认证，按 viewer。
     """
-    if not settings.auth_enabled:
-        return True, "admin"
+    # 1) 显式 token 优先（远程用户可凭 token 获得更高权限）
     header = request.headers.get("Authorization", "")
     if header.lower().startswith("bearer "):
         token = header[7:].strip()
         role = settings.api_tokens.get(token)
         if role in ROLE_LEVEL:
             return True, role
-    return False, "viewer"
+        # token 无效：不直接信任为 viewer，继续走 loopback 判断
+    # 2) 本机来源自动信任（桌面应用只监听 127.0.0.1）
+    if settings.auth_enabled and _is_loopback(request):
+        return True, "admin"
+    # 3) 远程无有效 token
+    if settings.auth_enabled:
+        return False, "viewer"
+    # auth_enabled=false（显式关闭时仍按旧行为 admin，保留逃生舱）
+    return True, "admin"
 
 
 def require_role(min_role: str):

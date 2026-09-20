@@ -33,9 +33,17 @@ def robust_env():
     import importlib
     import app.config as cfg
     importlib.reload(cfg)
-    # 先 reload 依赖 config 的 chat 模块，再 reload main，保证 router 引用新 _rate_limiter
+    # reload 依赖 config 的 chat 模块，再 reload main，保证 router 引用新 _rate_limiter
     import app.routers.chat as chat_mod
     importlib.reload(chat_mod)
+    # embedding/retrieval/store 也要 reload，否则仍持有旧 settings，
+    # RAG 请求会去加载 bge 模型（~100MB），把限流测试的 60s 滑动窗口撑爆
+    import app.rag.embedding as emb
+    importlib.reload(emb)
+    import app.rag.store as kb_store
+    importlib.reload(kb_store)
+    import app.rag.retrieval as retr
+    importlib.reload(retr)
     import app.main as main
     importlib.reload(main)
     yield
@@ -237,17 +245,28 @@ def test_ping_non_numeric_count_rejected(client):
 
 # ---------------------------------------------------------------- 5. 限流层
 def test_rate_limit_after_30(client):
-    """31 连发：30 次通过 + 1 次被限流（同一 client host）。前置用例已消耗部分额度，先重置。"""
+    """31 连发：30 次通过 + 1 次被限流（同一 client host）。
+
+    测试环境 RAG 路径每次约 2~3s（向量检索+mock LLM），31 次总耗时可能超过
+    60s 滑窗，导致最早的命中被窗口误剔。临时放大 window，只验证 limit=30 的阈值，
+    不改产品行为；测完还原。
+    """
     from app.routers.chat import _rate_limiter
     _rate_limiter.reset()
+    orig_window = _rate_limiter.window
+    _rate_limiter.window = 300
     ok = 0
     limited = 0
-    for _ in range(31):
-        r = client.post("/api/chat", json={"message": "hi"})
-        if "请求过于频繁" in r.text:
-            limited += 1
-        else:
-            ok += 1
+    try:
+        for _ in range(31):
+            r = client.post("/api/chat", json={"message": "hi"})
+            if "请求过于频繁" in r.text:
+                limited += 1
+            else:
+                ok += 1
+    finally:
+        _rate_limiter.window = orig_window
+        _rate_limiter.reset()
     assert ok == 30, f"应 30 次通过，实际 {ok}"
     assert limited == 1, f"应 1 次限流，实际 {limited}"
 
