@@ -2,6 +2,8 @@
 
 > AI Agent 驱动的网络运维助手：自研 ReAct 决策循环 + 混合检索知识库 + Docker/FRR 真实协议实验室。
 > 面向网络故障诊断场景，让大模型能真正读设备状态、注入并恢复故障、再下结论。
+>
+> 📖 **技术复盘**：[从第一性原理到落地——这个项目是怎么做出来的](docs/项目自述-从第一性原理到落地.md)
 
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688)
