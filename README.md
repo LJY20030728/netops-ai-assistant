@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688)
 ![PyWebView](https://img.shields.io/badge/pywebview-5.x-green)
-![pytest](https://img.shields.io/badge/tests-49%20passed-brightgreen)
+![pytest](https://img.shields.io/badge/tests-52%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -80,7 +80,8 @@ NetOps AI Assistant 把这两件事接起来：
 - **口语→术语查询扩展**：把"时通时断/掉线/抓包/带宽打满"等口语映射为 `flapping`/`DHCP`/`端口镜像`/`拥塞` 等标准术语，缓解词面差异；
 - **告警路由加权**：确定性告警规则命中的手册在 RRF 分上叠加 boost，不替代检索而是加权；
 - **文档级去重**：同一来源只保留最高分 chunk，避免同文档多 chunk 霸榜；
-- **Rerank 评测驱动**：代码里保留了智谱 rerank 接入，但用 60 条领域查询做过评测——通用 rerank 在本领域是负优化（权重 0.4 时 MRR 0.566，0.2 时 0.693，纯 RRF 0.891），因此 `rerank_weight` 默认 0。这是用数据调参而不是堆组件。
+- **Rerank 评测驱动**：代码里保留了智谱 rerank 接入，但用领域查询做过离线评测——通用 rerank 在本领域是负优化（权重 0.4 时 MRR 0.566，0.2 时 0.693，纯 RRF 0.891），因此 `rerank_weight` 默认 0。这是用数据调参而不是堆组件。
+- **检索质量可量化（Recall@5 / MRR）**：`backend/app/rag/evaluate.py` 内置 96 条标注评测集（每条期望命中文档，按 standard/colloquial/terse/noisy/shorthand 五种真实问法分组），一键跑：`python -m app.rag.evaluate`。当前线上 hybrid 配置（BM25+向量+RRF）实测 **Recall@5=0.990（95/96）、MRR=0.748**；纯向量基线 R@5=0.865/MRR=0.680。最弱变体是口语化工单（colloquial MRR=0.50），已在 `tests/test_eval_smoke.py` 加静态校验防标注漂移。
 
 ### 4. FRR 真实协议实验室（方案 B）
 
@@ -204,7 +205,7 @@ cd backend
 pytest tests/ -q
 ```
 
-49 个用例覆盖：意图判定、会话持久化、故障状态机、路由冒烟、命令注入拦截、非法 session_id、空白消息、注入检测、拓扑健康度判定。
+52 个用例覆盖：意图判定、会话持久化、故障状态机、路由冒烟、命令注入拦截、非法 session_id、空白消息、注入检测、拓扑健康度判定。
 
 ## 配置项（backend/.env）
 
@@ -230,7 +231,7 @@ netops-assistant/
 │   │   ├── llm/               # LLM provider 抽象（智谱/豆包）
 │   │   └── security/          # 注入检测/RBAC/限流/审计
 │   ├── knowledge_base/       # 排障手册语料
-│   └── tests/                # pytest（49 用例）
+│   └── tests/                # pytest（52 用例）
 ├── frontend/
 │   ├── index.html            # 单页应用
 │   └── assets/               # 图标与主题素材

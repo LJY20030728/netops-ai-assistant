@@ -116,7 +116,7 @@ EVAL_SET = [
     {"q": "公司电脑突然全部拿不到地址了，显示未识别网络", "expect": "case-013.md", "variant_type": "colloquial"},
     {"q": "dhcp pool 满了", "expect": "case-013.md", "variant_type": "terse"},
     {"q": "新加了一台设备，配了 dhcp 中继，但下面的终端还是拿不到地址，中继地址好像指错了", "expect": "case-014.md", "variant_type": "noisy"},
-    {"q": "出口带宽又被打满了，查一下是谁在跑流量", "expect": "端口镜像与抓包分析.md", "variant_type": "colloquial"},
+    {"q": "出口带宽又被打满了，查一下是谁在跑流量", "expect": "带宽跑满与TopN流量分析.md", "variant_type": "colloquial"},
     {"q": "qos 拥塞丢包 出口", "expect": "网络时延与拥塞排查.md", "variant_type": "terse"},
     {"q": "最近晚上业务就卡，白天没事，看了下是备份任务把带宽吃满了，想限速", "expect": "case-029.md", "variant_type": "noisy"},
     {"q": "交换机 cpu 一直 90 多，不知道啥进程占的", "expect": "case-017.md", "variant_type": "colloquial"},
