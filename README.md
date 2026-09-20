@@ -16,7 +16,7 @@
 - [这个系统是做什么的](#这个系统是做什么的)
 - [核心能力](#核心能力)
 - [技术架构与选型理由](#技术架构与选型理由)
-- [优点与局限](#优点与局限)
+- [技术特性与架构边界](#技术特性与架构边界)
 - [快速开始](#快速开始)
 - [测试](#测试)
 - [配置项](#配置项)
@@ -38,7 +38,7 @@ NetOps AI Assistant 把这两件事接起来：
 
 此外它内置了一个**可逆故障实验室**：在 3 台跑真实 OSPF/eBGP 协议栈的 FRR 容器上注入 `link_down`/`ospf_cost`/`bgp_neighbor_down` 三类故障，观察邻居和路由的真实变化，再一键恢复。这使得"AI 运维"不是对着假数据演示，而是在真协议栈上观察真故障。
 
-适用场景：网络工程教学/排障演练、AI Agent + 运维方向的技术验证、个人简历项目。它不是面向大规模生产网的商业 NOC 平台（见[局限](#优点与局限)）。
+适用场景：网络工程排障演练、AI Agent 闭环验证、运维自动化技术评估。
 
 ---
 
@@ -136,7 +136,7 @@ NetOps AI Assistant 把这两件事接起来：
 
 | 决策点 | 选择 | 为什么不选其他 |
 |---|---|---|
-| Agent 框架 | **手写 ReAct 循环** | LangChain/LangGraph 是黑盒，面试和调试时讲不清"模型为什么这步调了这个工具"；手写循环只有 ~300 行，协议、容错、强制取证都能完整说明。后续要条件分支/并行可平滑迁移。 |
+| Agent 框架 | **手写 ReAct 循环** | LangChain/LangGraph 封装了调度循环，工具调用链不透明，运行时难以定位"模型为什么这步调了这个工具"；手写循环约 300 行，决策协议、容错、强制取证均显式可查，后续要条件分支/并行可在此基础上演进。 |
 | Web 框架 | FastAPI + Uvicorn | 原生 async 适配 Agent 的多步异步工具调用，SSE 流式支持好，Pydantic 自带请求校验。 |
 | 前端 | **原生 HTML/CSS/JS 单页** | 这个项目交互不复杂（聊天 + 拓扑 + 设置），引入 React/Vue 只会增加构建链和包体；SSE、分栏、轮询原生 API 足够。 |
 | LLM | 智谱 GLM-4.5-Air（OpenAI 兼容协议） | 国内可直连、有免费额度；代码里抽象了 `LLM_PROVIDER`，切换豆包只需改配置不改代码。 |
@@ -148,25 +148,25 @@ NetOps AI Assistant 把这两件事接起来：
 
 ---
 
-## 优点与局限
+## 技术特性与架构边界
 
-### 优点
+### 技术特性
 
-- **真协议栈而非假数据**：故障注入后 OSPF 邻居状态、BGP 会话、路由表变化是真实 FRR 进程产生的，不是前端画的动画；
-- **Agent 无黑盒**：ReAct 循环、工具协议、容错解析、强制取证全部自研可读，面试可逐行讲；
-- **检索有评测证据**：BM25/向量/RRF/rerank 的取舍来自 60 条领域查询的 MRR 对比，不是拍脑袋；
-- **安全层闭环**：注入检测、RBAC、限流、审计、命令注入二道防线、错误不泄露，在一个学生项目里算完整；
-- **可运行交付**：双击 exe 即开，或 `python launcher.py` 源码启动，46 个 pytest 全绿。
+- **协议栈级验证**：故障注入后 OSPF 邻居状态、BGP 会话、路由表变化由 FRR 守护进程（zebra/ospfd/bgpd）真实产生，前端拓扑直接消费 vtysh 文本解析结果，不经过状态模拟层；
+- **Agent 闭环可观测**：ReAct 循环、工具 JSON 协议、决策容错、强制取证策略均在 `agent/agent.py` 内显式实现，无框架中间层；每一步的决策原文与工具返回通过 SSE 下发，便于离线复盘；
+- **检索权重由离线评测确定**：BM25 / 向量 / RRF / rerank 的候选数与融合权重基于 60 条领域查询的 MRR 评估调参，而非按经验默认；
+- **纵深防御**：提示词注入分级拦截、RBAC 工具级授权、滑动窗口限流、审计日志落盘、CLI 参数元字符过滤（入口与执行前双重）；
+- **自包含运行**：PyInstaller onedir 打包，无 torch 环境时 embedding 自动降级为哈希向量，不依赖外部向量数据库或消息队列。
 
-### 局限（诚实说明）
+### 当前架构边界
 
-- **单机单用户演示**：无多用户并发、无会话横向扩展、无分布式部署；
-- **LLM 走外部 API**：对话和（可选的）embedding 依赖智谱云服务，不是完全私有化部署；
-- **设备规模小**：真实设备只有 3 台 FRR，另有 3 台内置仿真设备（华为语法），未扩展到多区域/大规模拓扑；
-- **注入检测是启发式正则**：能拦常见模式，对抗性强的注入需要 LLM 级检测或输出侧校验；
-- **无生产级运维**：没有 CI/CD 流水线、没有容器化后端镜像、没有监控/告警对接，目前是个人项目完成度，不是企业级交付。
+- **单进程单实例**：FastAPI 单 uvicorn 进程，会话与向量索引存于本地文件系统，无水平扩展、无多副本一致性设计；
+- **推理侧外置**：对话模型与可选 embedding 走智谱 OpenAI 兼容端点，本仓库不含本地推理运行时；
+- **受控拓扑规模**：真实设备为 3 台 FRR 容器，故障目录按设备-接口白名单（`_LEGAL`）约束，未做多区域自治系统或跨厂商扩展；
+- **注入检测为静态规则**：high/medium 分级基于正则模式，未引入语义级注入判定或工具输出端的二次校验；
+- **工程化外扩项未接入**：pytest 在本地执行，未配置 CI/CD 流水线、容器化后端镜像与指标/日志外送。
 
-这些局限决定了它适合作为**能完整讲清"AI 如何真的操作网络设备"的简历/演示项目**，而不是直接搬进生产网的 NOC 产品。
+系统定位为网络运维 Agent 的闭环验证平台：聚焦"LLM 经工具调用操作真实协议栈并对结果负责"这一条链路，上述边界即该验证范围的工程切面。
 
 ---
 
@@ -245,7 +245,7 @@ NetOps AI Assistant is an AI-agent copilot for network troubleshooting. Rather t
 
 The retrieval layer combines a from-scratch BM25 (CJK unigram+bigram tokenization), local `bge-small-zh` embeddings, and RRF fusion, with query expansion and alert routing. A 60-query domain evaluation drove the decision to keep the third-party reranker disabled (it was a net negative). A security layer adds prompt-injection heuristics, three-role RBAC, rate limiting, and an audit trail.
 
-It is intentionally dependency-light: no LangChain/LangGraph, no Qdrant server, no Node build chain. The desktop shell is pywebview, packaged with PyInstaller; when torch is absent the embedding layer degrades to a hash vector so the build stays small. It is a single-machine demo built to be fully explainable and runnable end-to-end — not a production NOC platform.
+The stack is intentionally dependency-light: no LangChain/LangGraph, no Qdrant server, no Node build chain. The desktop shell is pywebview, packaged with PyInstaller; when torch is absent the embedding layer degrades to a hash vector so the build stays small. The system implements the closed loop of LLM tool-use against a real routing stack, scoped to a single node.
 
 ### License
 
