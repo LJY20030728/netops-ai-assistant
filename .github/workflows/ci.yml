@@ -21,7 +21,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
@@ -37,4 +37,4 @@ jobs:
           key: hf-bge-small-zh-v1.5
 
       - name: Run unit tests (skip dock)
-        run: pytest tests/ -m "not dock" --tb=short
+        run: pytest tests/ -m "not dock" --tb=long
