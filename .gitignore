@@ -53,3 +53,9 @@ check_bcd.ps1
 _frontend_check.js
 update_readme*.py
 docker_screenshot.png
+
+# 临时调试文件
+tools/_test_*.py
+tools/pw_test.txt
+tools/icon_preview.png
+tools/make_icon.py
