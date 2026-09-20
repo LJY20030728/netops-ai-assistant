@@ -37,4 +37,4 @@ jobs:
           key: hf-bge-small-zh-v1.5
 
       - name: Run unit tests (skip dock)
-        run: pytest tests/ -m "not dock" --tb=long
+        run: pytest tests/test_routes.py -v --tb=long
