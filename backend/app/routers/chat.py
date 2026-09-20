@@ -1,5 +1,6 @@
 """对话路由：SSE 流式 + RAG 检索 + Agent 工具调用。"""
 import asyncio
+import time
 import json
 import re
 
@@ -12,6 +13,7 @@ from app.agent import agent as agent_runner
 from app.llm.zhipu_client import LLMConfigError, stream_chat
 from app.rag.retrieval import hybrid_retrieve
 from app.security import audit
+from app import metrics as metrics_mod
 from app.security.auth import resolve_role
 from app.security.injection import is_blocked, scan_prompt_injection
 from app.security.ratelimit import SlidingWindowRateLimiter
@@ -107,6 +109,9 @@ async def chat(req: ChatRequest, request: Request):
             pass
 
         answer_parts: list[str] = []
+        t_req0 = time.time()
+        rag_ms = 0.0
+        usage = {}
         try:
             if is_agent_intent(req.message):
                 async for event in agent_runner.run_agent(req.message, req.history, role=role, session_id=req.session_id):
@@ -122,9 +127,18 @@ async def chat(req: ChatRequest, request: Request):
                         session_store.append(req.session_id, "assistant", "".join(answer_parts))
                 except ValueError:
                     pass
+                metrics_mod.record(
+                    path="chat", kind="agent",
+                    latency_ms=int((time.time() - t_req0) * 1000),
+                    rag_ms=0, llm_ms=0,
+                    prompt_tokens=0, completion_tokens=0,
+                    ok=True,
+                )
                 return
 
+            t_rag0 = time.time()
             context, sources = await asyncio.to_thread(_build_rag_context, req.message)
+            rag_ms = (time.time() - t_rag0) * 1000
             sys_msg = {"role": "system", "content": SYSTEM_PROMPT}
             if context:
                 sys_msg["content"] += f"\n\n【参考资料】\n{context}"
@@ -134,21 +148,39 @@ async def chat(req: ChatRequest, request: Request):
                 yield _sse({"type": "sources", "sources": sources})
             # 思考中提示：让用户感知模型正在工作（LLM 生成前）
             yield _sse({"type": "thinking", "text": "思考中…"})
-            async for chunk in stream_chat(messages):
+            t_llm0 = time.time()
+            async for chunk in stream_chat(messages, usage_out=usage):
                 answer_parts.append(chunk)
                 yield _sse({"type": "delta", "content": chunk})
+            llm_ms = (time.time() - t_llm0) * 1000
             yield _sse({"type": "done"})
             try:
                 if req.session_id and answer_parts:
                     session_store.append(req.session_id, "assistant", "".join(answer_parts))
             except ValueError:
                 pass
+            metrics_mod.record(
+                path="chat", kind="rag",
+                latency_ms=int((time.time() - t_req0) * 1000),
+                rag_ms=int(rag_ms), llm_ms=int(llm_ms),
+                prompt_tokens=usage.get("prompt_tokens", 0),
+                completion_tokens=usage.get("completion_tokens", 0),
+                ok=True,
+            )
         except LLMConfigError as exc:
             yield _sse({"type": "error", "message": str(exc)})
         except Exception as exc:  # noqa: BLE001
             # 不向用户泄露原始异常（防信息泄露）；细节进审计日志
             audit.log("chat", actor=role, action="chat_error",
                       detail=f"{type(exc).__name__}: {exc}")
+            metrics_mod.record(
+                path="chat", kind="error",
+                latency_ms=int((time.time() - t_req0) * 1000),
+                rag_ms=int(rag_ms), llm_ms=0,
+                prompt_tokens=usage.get("prompt_tokens", 0),
+                completion_tokens=usage.get("completion_tokens", 0),
+                ok=False, error=type(exc).__name__,
+            )
             yield _sse({"type": "error", "message": "服务暂时不可用，请稍后重试或查看系统日志。"})
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers={

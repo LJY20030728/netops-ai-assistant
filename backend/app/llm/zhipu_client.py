@@ -72,11 +72,13 @@ async def _mock_stream(messages: list[dict]) -> AsyncIterator[str]:
         yield reply[i : i + 6]
 
 
-async def stream_chat(messages: list[dict]) -> AsyncIterator[str]:
-    """流式输出模型回复。"""
+async def stream_chat(messages: list[dict], usage_out: dict | None = None) -> AsyncIterator[str]:
+    """流式输出模型回复。usage_out 非空时，结束时把 {prompt_tokens, completion_tokens} 写进去。"""
     if settings.mock_llm:
         async for chunk in _mock_stream(messages):
             yield chunk
+        if usage_out is not None:
+            usage_out.update({"prompt_tokens": 0, "completion_tokens": 0})
         return
 
     _, _, model = _resolve_credentials()
@@ -87,10 +89,15 @@ async def stream_chat(messages: list[dict]) -> AsyncIterator[str]:
         stream=True,
         max_tokens=settings.max_tokens,
         temperature=settings.temperature,
+        stream_options={"include_usage": True},
     )
     async for chunk in stream:
         if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
             yield chunk.choices[0].delta.content
+        # 最后一个 chunk：choices 为空但带 usage
+        if usage_out is not None and getattr(chunk, "usage", None):
+            usage_out["prompt_tokens"] = chunk.usage.prompt_tokens or 0
+            usage_out["completion_tokens"] = chunk.usage.completion_tokens or 0
 
 
 async def complete_json(messages: list[dict], max_tokens: int = 1024) -> str:

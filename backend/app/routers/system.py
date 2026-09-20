@@ -37,6 +37,12 @@ async def health():
     }
 
 
+@router.get("/api/system/metrics")
+async def system_metrics():
+    from app.metrics import summary
+    return {"ok": True, "summary": summary(100)}
+
+
 @router.get("/api/auth/me")
 async def auth_me(request: Request):
     authenticated, role = resolve_auth(request)
