@@ -5,3 +5,4 @@ pydantic-settings>=2.0
 numpy>=1.26
 netmiko>=4.3
 httpx>=0.27
+pymupdf>=1.24
