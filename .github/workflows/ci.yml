@@ -15,6 +15,7 @@ jobs:
     env:
       MOCK_LLM: "true"
       ZHIPU_API_KEY: "ci-dummy"
+      ZHIPU_EMBEDDING_MODEL: "bge"
       DEVICE_MODE: "simulate"
     steps:
       - uses: actions/checkout@v4
@@ -37,4 +38,4 @@ jobs:
           key: hf-bge-small-zh-v1.5
 
       - name: Run unit tests (skip dock)
-        run: pytest tests/test_routes.py -v --tb=long
+        run: pytest tests/ -m "not dock" --tb=short
