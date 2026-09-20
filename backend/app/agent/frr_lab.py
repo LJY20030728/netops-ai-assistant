@@ -144,6 +144,20 @@ class FrrLab:
         cfg = self._resolve(fault, iface)
         return f"[FRR:{self.device.name}] 状态（{cfg['label']}）\n{await self._run(cfg['verify'])}"
 
+    def dry_run(self, fault: str, iface: str) -> str:
+        """预览将执行的命令链与预期影响，不真执行。"""
+        cfg = self._resolve(fault, iface)
+        apply_cmd = self._vtysh(cfg["apply"])
+        recover_cmd = self._vtysh(cfg["recover"])
+        return (
+            f"[DRY-RUN] [FRR:{self.device.name}] 将注入故障「{cfg['label']}」({iface})\n"
+            f"  影响：{cfg['impact']}\n"
+            f"  注入命令（vtysh）：{apply_cmd}\n"
+            f"  恢复命令（vtysh）：{recover_cmd}\n"
+            f"  验证命令：{cfg['verify']}\n"
+            f"  （未执行任何修改；请确认后调 action=inject）"
+        )
+
     def _resolve(self, fault: str, iface: str) -> dict:
         if fault not in FAULTS:
             raise DeviceError(f"未知故障：{fault}。可用：{', '.join(FAULTS)}")

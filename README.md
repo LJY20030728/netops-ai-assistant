@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688)
 ![PyWebView](https://img.shields.io/badge/pywebview-5.x-green)
-![pytest](https://img.shields.io/badge/tests-52%20passed-brightgreen)
+![pytest](https://img.shields.io/badge/tests-55%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -95,7 +95,8 @@ NetOps AI Assistant 把这两件事接起来：
   - `link_down`：接口 shutdown → 邻居 down、路由撤销；
   - `ospf_cost`：cost 调到 10000 → SPF 重选路径；
   - `bgp_neighbor_down`：BGP 邻居 shutdown → 会话 Idle、前缀停止交换；
-- 健康度判定有实测教训：直连路由在接口 shutdown 后仍存在，会掩盖故障，因此健康判定只看**关键协议邻居**（OSPF/BGP 状态），不看直连路由。
+- 健康度判定有实测教训：直连路由在接口 shutdown 后仍存在，会掩盖故障，因此健康判定只看**关键协议邻居**（OSPF/BGP 状态），不看直连路由；
+- **故障注入 dry-run gate（安全门）**：``frr_fault_inject`` 新增 ``action=dry_run``，返回将执行的 vtysh 命令链、预期邻居/路由影响、逆操作命令，不真执行；随后 ``action=inject`` 会检查 ``fault_state`` 里是否有最近 60 秒内同一 (device, fault, iface) 的 dry-run 记录，没有则直接拒绝并回灌"请先 dry_run"。这把"先预览再动手"做成代码层强制，模型想跳过也跳不过；recover/status/show 不受此门约束（recover 是安全操作、status/show 只读）。
 
 ### 5. 安全与工程化
 
@@ -205,7 +206,7 @@ cd backend
 pytest tests/ -q
 ```
 
-52 个用例覆盖：意图判定、会话持久化、故障状态机、路由冒烟、命令注入拦截、非法 session_id、空白消息、注入检测、拓扑健康度判定。
+55 个用例覆盖：意图判定、会话持久化、故障状态机、路由冒烟、命令注入拦截、非法 session_id、空白消息、注入检测、拓扑健康度判定。
 
 ## 配置项（backend/.env）
 
@@ -231,7 +232,7 @@ netops-assistant/
 │   │   ├── llm/               # LLM provider 抽象（智谱/豆包）
 │   │   └── security/          # 注入检测/RBAC/限流/审计
 │   ├── knowledge_base/       # 排障手册语料
-│   └── tests/                # pytest（52 用例）
+│   └── tests/                # pytest（55 用例）
 ├── frontend/
 │   ├── index.html            # 单页应用
 │   └── assets/               # 图标与主题素材

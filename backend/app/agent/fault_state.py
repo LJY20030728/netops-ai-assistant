@@ -58,3 +58,30 @@ def snapshot() -> dict:
     """返回 {device: {fault: iface}, ...}（不含 updated 元字段）。"""
     state = _load()
     return {k: v for k, v in state.items() if isinstance(v, dict)}
+
+
+# ---------------------------------------------------------------- dry-run gate
+# 结构：{"dry_runs": {"<device>:<fault>:<iface>": <unix_ts>, ...}}
+_DRY_RUN_KEY = "dry_runs"
+DRY_RUN_WINDOW_SEC = 60  # dry_run 后 60 秒内 inject 有效
+
+
+def _key(device: str, fault: str, iface: str) -> str:
+    return f"{device}:{fault}:{iface}"
+
+
+def mark_dry_run(device: str, fault: str, iface: str) -> None:
+    """记录一次 dry-run 预览（inject 前必须先调它）。"""
+    state = _load()
+    state.setdefault(_DRY_RUN_KEY, {})[_key(device, fault, iface)] = time.time()
+    _save(state)
+
+
+def has_fresh_dry_run(device: str, fault: str, iface: str, window: int = DRY_RUN_WINDOW_SEC) -> bool:
+    """检查 60 秒内是否对同一 (device, fault, iface) 做过 dry-run。"""
+    state = _load()
+    dr = state.get(_DRY_RUN_KEY, {})
+    ts = dr.get(_key(device, fault, iface))
+    if ts is None:
+        return False
+    return (time.time() - float(ts)) <= window

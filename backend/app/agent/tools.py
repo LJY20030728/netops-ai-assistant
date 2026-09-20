@@ -141,8 +141,8 @@ async def _get_event_timeline(args: dict) -> str:
 
 @register_tool(
     name="frr_fault_inject",
-    description="在 FRR 真实实验室注入/恢复/查看可逆故障。device=frr1/frr2/frr3；action=inject|recover|status|show；fault=link_down|ospf_cost|bgp_neighbor_down；iface=eth0|eth1。",
-    parameters={"device": "frr1/frr2/frr3", "action": "inject|recover|status|show",
+    description="在 FRR 真实实验室注入/恢复/查看可逆故障。device=frr1/frr2/frr3；action=dry_run|inject|recover|status|show；fault=link_down|ospf_cost|bgp_neighbor_down；iface=eth0|eth1。inject 前必须先 dry_run 预览影响。",
+    parameters={"device": "frr1/frr2/frr3", "action": "dry_run|inject|recover|status|show",
                 "fault": "link_down|ospf_cost|bgp_neighbor_down", "iface": "eth0|eth1",
                 "command": "action=show 时的只读 vtysh 命令"},
     roles=["admin"],
@@ -154,9 +154,20 @@ async def _frr_fault_inject(args: dict) -> str:
     fault = str(args.get("fault", "")).strip()
     iface = str(args.get("iface", "")).strip()
     lab = FrrLab(device)
+    if action == "dry_run":
+        if not fault or not iface:
+            raise DeviceError("缺少 fault/iface 参数")
+        out = lab.dry_run(fault, iface)
+        fault_state.mark_dry_run(device.name, fault, iface)
+        return out
     if action == "inject":
         if not fault or not iface:
             raise DeviceError("缺少 fault/iface 参数")
+        if not fault_state.has_fresh_dry_run(device.name, fault, iface):
+            raise DeviceError(
+                f"安全拦截：inject {device.name} {fault} {iface} 前必须先 action=dry_run 预览影响（60 秒内有效）。"
+                "请先调 action=dry_run，确认无影响后再 inject。"
+            )
         result = await lab.inject(fault, iface)
         fault_state.mark_inject(device.name, fault, iface)
         return result
@@ -182,7 +193,7 @@ async def _frr_fault_inject(args: dict) -> str:
             raise DeviceError("action=show 仅允许只读命令")
         out = await lab._run(f'vtysh -c "{command}"')
         return f"[FRR:{device.name}] 带外执行 '{command}' 输出：\n{out}"
-    raise DeviceError("action 必须为 inject/recover/status/show")
+    raise DeviceError("action 必须为 dry_run/inject/recover/status/show")
 
 
 # ===== 对外接口（保持兼容）=====
