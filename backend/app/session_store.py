@@ -4,12 +4,14 @@
 每行一条消息：{"role": "user"|"assistant", "content": "...", "ts": 时间戳}
 """
 import json
+import threading
 import time
 from pathlib import Path
 
 from app.config import DATA_DIR
 
 SESSION_DIR = DATA_DIR / "sessions"
+_lock = threading.Lock()  # 进程内串行化文件追加，防同一会话并发写交错
 
 
 # 会话 ID 白名单之外一律拒绝：路径分隔符 + Windows 非法文件名字符 + 控制字符
@@ -44,14 +46,13 @@ def append(session_id: str, role: str, content: str) -> None:
         return
     SESSION_DIR.mkdir(parents=True, exist_ok=True)
     p = _path(session_id)
-    with p.open("a", encoding="utf-8") as f:
-        f.write(
-            json.dumps(
-                {"role": role, "content": content, "ts": time.strftime("%Y-%m-%d %H:%M:%S")},
-                ensure_ascii=False,
-            )
-            + "\n"
-        )
+    line = json.dumps(
+        {"role": role, "content": content, "ts": time.strftime("%Y-%m-%d %H:%M:%S")},
+        ensure_ascii=False,
+    ) + "\n"
+    with _lock:
+        with p.open("a", encoding="utf-8") as f:
+            f.write(line)
 
 
 def list_sessions(limit: int = 20) -> list[dict]:

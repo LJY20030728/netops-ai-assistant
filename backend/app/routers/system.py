@@ -1,4 +1,6 @@
 """健康检查与认证状态路由。"""
+import os
+import time
 from fastapi import APIRouter, Request
 
 from app.config import settings
@@ -7,6 +9,7 @@ from app.security import audit
 from app.security.auth import resolve_auth
 
 router = APIRouter(tags=["system"])
+_STARTED_AT = time.time()  # 进程启动时间，用于 /api/health 暴露单进程边界
 
 
 @router.get("/api/health")
@@ -23,6 +26,7 @@ async def health():
         "sim_scenario": get_current_scenario() if settings.device_mode == "simulate" else None,
         "mock": settings.mock_llm,
         "key_configured": bool(settings.zhipu_api_key),
+        "process": {"pid": os.getpid(), "started_at": round(_STARTED_AT, 1), "workers": 1},
         "kb_chunks": kb_store.count(),
         "security": {
             "auth_enabled": settings.auth_enabled,

@@ -164,7 +164,7 @@ NetOps AI Assistant 把这两件事接起来：
 
 ### 当前架构边界
 
-- **单进程单实例**：FastAPI 单 uvicorn 进程，会话与向量索引存于本地文件系统，无水平扩展、无多副本一致性设计；
+- **单进程单实例（有意为之，非缺陷）**：FastAPI 单 uvicorn 进程，所有可变状态（会话 JSONL、fault_state、trace、向量索引）落本地文件系统，关键写路径已加进程内 ``threading.Lock`` 串行化（session_store/fault_state/audit/ratelimit/BM25）。``/api/health`` 暴露 ``process.pid`` 与 ``started_at`` 以明示单 worker。不引入 Redis/PG 是因为这是单机排障演练工具，多副本一致性在这个规模下是过度工程；将来要扩展，状态层接口已在 ``session_store``/``store``/``fault_state`` 三个门面后，换 SQLite/Redis 不动业务代码。
 - **推理侧外置**：对话模型与可选 embedding 走智谱 OpenAI 兼容端点，本仓库不含本地推理运行时；
 - **受控拓扑规模**：真实设备为 3 台 FRR 容器，故障目录按设备-接口白名单（`_LEGAL`）约束，未做多区域自治系统或跨厂商扩展；
 - **注入检测为静态规则**：high/medium 分级基于正则模式，未引入语义级注入判定或工具输出端的二次校验；

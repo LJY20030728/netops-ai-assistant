@@ -5,12 +5,14 @@
 inject 时写入对应条目，recover 时删除，recover-all 清空。
 """
 import json
+import threading
 import time
 from pathlib import Path
 
 from app.config import DATA_DIR
 
 _STATE_FILE = DATA_DIR / "fault_state.json"
+_lock = threading.Lock()  # 串行化 read-modify-write，防并发丢更新
 
 
 def _load() -> dict:
@@ -30,28 +32,31 @@ def _save(state: dict) -> None:
 
 def mark_inject(device: str, fault: str, iface: str) -> None:
     """记录某设备注入了某故障。"""
-    state = _load()
-    state.setdefault(device, {})[fault] = iface
-    _save(state)
+    with _lock:
+        state = _load()
+        state.setdefault(device, {})[fault] = iface
+        _save(state)
 
 
 def clear_recover(device: str, fault: str | None = None) -> None:
     """恢复故障：fault 为 None 清空该设备全部，否则只删对应 fault。"""
-    state = _load()
-    if device not in state:
-        return
-    if fault is None:
-        del state[device]
-    else:
-        state[device].pop(fault, None)
-        if not state[device]:
+    with _lock:
+        state = _load()
+        if device not in state:
+            return
+        if fault is None:
             del state[device]
-    _save(state)
+        else:
+            state[device].pop(fault, None)
+            if not state[device]:
+                del state[device]
+        _save(state)
 
 
 def clear_all() -> None:
     """一键恢复：清空全部。"""
-    _save({})
+    with _lock:
+        _save({})
 
 
 def snapshot() -> dict:
@@ -72,16 +77,18 @@ def _key(device: str, fault: str, iface: str) -> str:
 
 def mark_dry_run(device: str, fault: str, iface: str) -> None:
     """记录一次 dry-run 预览（inject 前必须先调它）。"""
-    state = _load()
-    state.setdefault(_DRY_RUN_KEY, {})[_key(device, fault, iface)] = time.time()
-    _save(state)
+    with _lock:
+        state = _load()
+        state.setdefault(_DRY_RUN_KEY, {})[_key(device, fault, iface)] = time.time()
+        _save(state)
 
 
 def has_fresh_dry_run(device: str, fault: str, iface: str, window: int = DRY_RUN_WINDOW_SEC) -> bool:
     """检查 60 秒内是否对同一 (device, fault, iface) 做过 dry-run。"""
-    state = _load()
-    dr = state.get(_DRY_RUN_KEY, {})
-    ts = dr.get(_key(device, fault, iface))
-    if ts is None:
-        return False
-    return (time.time() - float(ts)) <= window
+    with _lock:
+        state = _load()
+        dr = state.get(_DRY_RUN_KEY, {})
+        ts = dr.get(_key(device, fault, iface))
+        if ts is None:
+            return False
+        return (time.time() - float(ts)) <= window
