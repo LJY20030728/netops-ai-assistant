@@ -59,3 +59,9 @@ async def index():
 
 
 app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
+app.mount("/js", StaticFiles(directory=FRONTEND_DIR / "js"), name="js")
+
+
+@app.get("/styles.css")
+async def styles_css():
+    return FileResponse(FRONTEND_DIR / "styles.css")

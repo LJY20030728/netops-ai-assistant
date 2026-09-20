@@ -234,7 +234,9 @@ netops-assistant/
 │   ├── knowledge_base/       # 排障手册语料
 │   └── tests/                # pytest（55 用例）
 ├── frontend/
-│   ├── index.html            # 单页应用
+│   ├── index.html            # 单页应用（HTML 结构）
+│   ├── styles.css            # 独立样式（纳西妲绿白主题）
+│   ├── js/app.js             # 原生 ES module（聊天/拓扑/会话/时间线）
 │   └── assets/               # 图标与主题素材
 ├── docker-compose.frr.yml    # 3 台 FRR 容器
 ├── launcher.py               # pywebview 桌面启动器
