@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688)
 ![PyWebView](https://img.shields.io/badge/pywebview-5.x-green)
-![pytest](https://img.shields.io/badge/tests-55%20passed-brightgreen)
+![pytest](https://img.shields.io/badge/tests-58%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -114,6 +114,66 @@ NetOps AI Assistant 把这两件事接起来：
 
 ---
 
+## 系统架构
+
+```mermaid
+flowchart TB
+    subgraph Client["客户端层"]
+        UI["原生 HTML/CSS/JS<br/>(无框架, ES Module)"]
+        Desktop["pywebview 桌面壳<br/>(打包成 .exe)"]
+    end
+
+    subgraph API["FastAPI 后端 (单进程)"]
+        Chat["/api/chat<br/>SSE 流式"]
+        Metrics["/api/system/metrics<br/>P50/P95/token"]
+        Health["/api/health"]
+    end
+
+    subgraph Agent["ReAct 决策循环 (手写, ~300行)"]
+        Reason["Reasoning<br/>(智谱 glm-4.5-air)"]
+        Tool["Tool Call<br/>(工具名/设备名预校验)"]
+        Trace["Trace 落盘<br/>steps.jsonl"]
+    end
+
+    subgraph Tools["工具集"]
+        Ping["ping"]
+        Iface["show interface"]
+        OSPF["show OSPF"]
+        BGP["show BGP"]
+        RAGTool["RAG 排障手册"]
+    end
+
+    subgraph RAG["混合检索 RAG"]
+        Emb["本地 bge-small-zh<br/>(512维, 离线)"]
+        BM25["BM25 关键词"]
+        Merge["RRF 融合"]
+    end
+
+    subgraph Lab["故障实验室"]
+        Gate["dry-run 安全门<br/>60s 预览才允许注入"]
+        Frr1["frr1 (FRR 容器)"]
+        Frr2["frr2 (FRR 容器)"]
+        Frr3["frr3 (FRR 容器)"]
+    end
+
+    UI --> Chat
+    Desktop -.-> UI
+    Chat --> Agent
+    Agent --> Reason
+    Reason --> Tool
+    Tool --> Ping & Iface & OSPF & BGP & RAGTool
+    RAGTool --> RAG
+    Emb --> Merge
+    BM25 --> Merge
+    Tool --> Trace
+    Ping & Iface & OSPF & BGP --> Gate
+    Gate --> Frr1 & Frr2 & Frr3
+    Chat --> Metrics
+```
+
+**双通道设备访问**：业务通道走 Netmiko SSH（仿真 SSH 服务端）；带外通道走 `docker exec vtysh`（真实 FRR CLI），互为 fallback。
+
+---
 ## 技术架构与选型理由
 
 ```
