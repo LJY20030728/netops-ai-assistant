@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688)
 ![PyWebView](https://img.shields.io/badge/pywebview-5.x-green)
-![pytest](https://img.shields.io/badge/tests-46%20passed-brightgreen)
+![pytest](https://img.shields.io/badge/tests-49%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -52,7 +52,9 @@ NetOps AI Assistant 把这两件事接起来：
 - **多步循环**：工具结果以 `tool` 角色消息回灌，模型继续决策，最多 `agent_max_steps=6` 步；
 - **强制取证**：诊断类问题若工具调用少于 3 次就想 `finish`，会被拦截并要求继续取证（带下一步取证方向提示：先 ping → 查接口 → 查邻居/ACL/ARP → 查时间线），由最大步数兜底防死循环；
 - **容错解析**：模型输出常有 markdown 围栏、多余前后缀、"思考文字+JSON"拼接，解析器做了三级兜底（整体 JSON → 提取花括号片段 → 用片段前的裸工具名补全）；
-- **过程可见**：每一步的原始决策和工具调用结果通过 SSE 实时推到前端，用户能看到模型"先查了什么、再查了什么"。
+- **过程可见**：每一步的原始决策和工具调用结果通过 SSE 实时推到前端，用户能看到模型"先查了什么、再查了什么"；
+- **运行轨迹落盘（Agent Trace）**：每次 Agent 运行按 session_id 写 backend/data/traces/<session_id>/steps.jsonl，记录每一步的类型（thought/tool_call/hallucinated_tool/hallucinated_device/finish/error）、LLM 原始决策、工具名与参数、执行耗时（ms）、结果预览、总耗时，结束时再写一份 summary.json。这使得"模型为什么这步调了这个工具"可复盘，而不是跑完即焚；
+- **工具名/设备名幻觉前置拦截**：LLM 输出的工具名若不在注册表中、设备名若不在 devices.json 中，在真正发起 SSH 之前就回灌纠正（"你调用了不存在的工具 X，可用工具是 [...]"），最多重试 2 次。相比"发了命令再 catch 异常"，这把幻觉挡在设备操作层之外。
 
 ### 2. 工具注册表与权限
 
@@ -202,7 +204,7 @@ cd backend
 pytest tests/ -q
 ```
 
-46 个用例覆盖：意图判定、会话持久化、故障状态机、路由冒烟、命令注入拦截、非法 session_id、空白消息、注入检测、拓扑健康度判定。
+49 个用例覆盖：意图判定、会话持久化、故障状态机、路由冒烟、命令注入拦截、非法 session_id、空白消息、注入检测、拓扑健康度判定。
 
 ## 配置项（backend/.env）
 
@@ -223,12 +225,12 @@ netops-assistant/
 │   ├── app/
 │   │   ├── main.py            # FastAPI 入口（注册 10 个路由）
 │   │   ├── routers/           # chat/topology/docker/sessions/sim/alert/events/kb/report/system
-│   │   ├── agent/             # ReAct 循环 + 工具注册表 + FRR 实验室
+│   │   ├── agent/             # ReAct 循环 + 工具注册表 + FRR 实验室 + trace
 │   │   ├── rag/               # BM25/向量/RRF 混合检索 + embedding
 │   │   ├── llm/               # LLM provider 抽象（智谱/豆包）
 │   │   └── security/          # 注入检测/RBAC/限流/审计
 │   ├── knowledge_base/       # 排障手册语料
-│   └── tests/                # pytest（46 用例）
+│   └── tests/                # pytest（49 用例）
 ├── frontend/
 │   ├── index.html            # 单页应用
 │   └── assets/               # 图标与主题素材
@@ -243,7 +245,7 @@ netops-assistant/
 
 NetOps AI Assistant is an AI-agent copilot for network troubleshooting. Rather than answering from parametric memory, its hand-written ReAct loop drives an LLM to **collect evidence from real devices** (Netmiko CLI / out-of-band `docker exec vtysh`) before concluding. A three-container FRR lab runs real OSPF + eBGP, and the agent can inject and recover reversible faults (`link_down` / `ospf_cost` / `bgp_neighbor_down`) while observing genuine neighbor and route changes.
 
-The retrieval layer combines a from-scratch BM25 (CJK unigram+bigram tokenization), local `bge-small-zh` embeddings, and RRF fusion, with query expansion and alert routing. A 60-query domain evaluation drove the decision to keep the third-party reranker disabled (it was a net negative). A security layer adds prompt-injection heuristics, three-role RBAC, rate limiting, and an audit trail.
+Every Agent run writes a JSONL trace under `bbackend/data/traces/<session_id>/` (thoughts, tool calls, latency, hallucinated-tool/device rejections, final summary), and hallucinated tool or device names are rejected before any SSH command is sent. The retrieval layer combines a from-scratch BM25 (CJK unigram+bigram tokenization), local `bge-small-zh` embeddings, and RRF fusion, with query expansion and alert routing. A 60-query domain evaluation drove the decision to keep the third-party reranker disabled (it was a net negative). A security layer adds prompt-injection heuristics, three-role RBAC, rate limiting, and an audit trail.
 
 The stack is intentionally dependency-light: no LangChain/LangGraph, no Qdrant server, no Node build chain. The desktop shell is pywebview, packaged with PyInstaller; when torch is absent the embedding layer degrades to a hash vector so the build stays small. The system implements the closed loop of LLM tool-use against a real routing stack, scoped to a single node.
 
