@@ -13,21 +13,28 @@ jobs:
       run:
         working-directory: backend
     env:
-      DEVICE_MODE: real
-      ZHIPU_EMBEDDING_MODEL: local
-      LLM_MOCK: "true"
-      AUTH_ENABLED: "false"
+      MOCK_LLM: "true"
+      ZHIPU_API_KEY: "ci-dummy"
+      DEVICE_MODE: "simulate"
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: backend/requirements.txt
+
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest
-      - name: Run unit tests
-        run: pytest tests/ -v --tb=short
+          pip install -r requirements.txt pytest sentence-transformers
+
+      - name: Cache embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-bge-small-zh-v1.5
+
+      - name: Run unit tests (skip dock)
+        run: pytest tests/ -m "not dock" --tb=short

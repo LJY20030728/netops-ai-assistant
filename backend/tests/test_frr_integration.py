@@ -99,7 +99,8 @@ def labs():
 
 
 # ---------------------------------------------------------------- 用例
-def test_ospf_cost_takes_effect_and_recovers(labs):
+@pytest.mark.dock
+(labs):
     """frr2 eth0 注入 ospf_cost=10000 → vtysh 可见 Cost: 10000 → 恢复后回默认。"""
     _, lab2, _ = labs
 
@@ -117,7 +118,8 @@ def test_ospf_cost_takes_effect_and_recovers(labs):
     asyncio.run(_body())
 
 
-def test_link_down_drops_ospf_neighbor_then_recovers(labs):
+@pytest.mark.dock
+(labs):
     """frr1 eth0 shutdown → OSPF 邻居从 Full 消失 → no shutdown 后回到 Full。"""
     lab1, _, _ = labs
 
@@ -144,7 +146,8 @@ def test_link_down_drops_ospf_neighbor_then_recovers(labs):
     asyncio.run(_body())
 
 
-def test_bgp_neighbor_shutdown_drops_ebgp_then_recovers(labs):
+@pytest.mark.dock
+(labs):
     """frr3 BGP 邻居 shutdown → eBGP 会话非 Established → 恢复后 PfxRcd=2。"""
     _, _, lab3 = labs
 
