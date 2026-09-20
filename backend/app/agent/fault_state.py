@@ -5,6 +5,7 @@
 inject 时写入对应条目，recover 时删除，recover-all 清空。
 """
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -25,9 +26,13 @@ def _load() -> dict:
 
 
 def _save(state: dict) -> None:
+    """原子写：先写临时文件再 os.replace，进程 kill -9 不会留半写 JSON。"""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     state["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    _STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = json.dumps(state, ensure_ascii=False, indent=2)
+    tmp = _STATE_FILE.with_suffix(".tmp")
+    tmp.write_text(payload, encoding="utf-8")
+    os.replace(tmp, _STATE_FILE)
 
 
 def mark_inject(device: str, fault: str, iface: str) -> None:
