@@ -27,6 +27,23 @@ def _real_mode_device_guard(device) -> None:
         )
 
 
+# shell 元字符 / 命令拼接特征：出现即拒绝（不依赖仿真器降级）
+_SHELL_META = ("&&", "||", "|", ";", "`", "$(", "${", ">", "<", "\n", "\r", "\t&", " &")
+
+
+def _guard_cli(value, what: str) -> str:
+    """净化设备命令/目标参数：拒绝空值与 shell 元字符，防命令拼接注入。"""
+    v = (value if isinstance(value, str) else str(value or "")).strip()
+    if not v:
+        raise DeviceError(f"缺少 {what} 参数")
+    for bad in _SHELL_META:
+        if bad in v:
+            raise DeviceError(
+                f"{what} 包含非法字符（{bad.strip() or repr(bad)}），已拒绝执行：不允许命令拼接"
+            )
+    return v
+
+
 # ===== 工具注册 =====
 
 @register_tool(
@@ -47,9 +64,7 @@ async def _run_device_command(args: dict) -> str:
         iface = args.get("interface") or args.get("port")
         if iface:
             command = f"display interface {iface}"
-    command = command.strip()
-    if not command:
-        raise DeviceError("缺少 command 参数")
+    command = _guard_cli(command, "command")
     client = get_device_client(device)
     out = await client.run(command)
     return f"设备 {device.name}（{device.role}）执行 '{command}' 输出：\n{out}"
@@ -64,10 +79,13 @@ async def _run_device_command(args: dict) -> str:
 async def _ping(args: dict) -> str:
     device = _require_device(args.get("device"))
     _real_mode_device_guard(device)
-    target = str(args.get("target", "")).strip()
-    count = int(args.get("count") or 4)
-    if not target:
-        raise DeviceError("缺少 target 参数")
+    target = _guard_cli(args.get("target"), "target")
+    raw_count = args.get("count")
+    if raw_count is not None:
+        raw_count = _guard_cli(raw_count, "count")
+        if not raw_count.isdigit() or int(raw_count) < 1 or int(raw_count) > 20:
+            raise DeviceError("count 必须是 1-20 的整数")
+    count = int(raw_count or 4)
     client = get_device_client(device)
     out = await client.run(f"ping -c {count} {target}")
     return f"设备 {device.name} ping {target}（{count} 次）结果：\n{out}"
@@ -82,9 +100,7 @@ async def _ping(args: dict) -> str:
 async def _traceroute(args: dict) -> str:
     device = _require_device(args.get("device"))
     _real_mode_device_guard(device)
-    target = str(args.get("target", "")).strip()
-    if not target:
-        raise DeviceError("缺少 target 参数")
+    target = _guard_cli(args.get("target"), "target")
     client = get_device_client(device)
     out = await client.run(f"tracert {target}")
     return f"设备 {device.name} tracert {target} 结果：\n{out}"
@@ -161,9 +177,7 @@ async def _frr_fault_inject(args: dict) -> str:
     if action == "status":
         return await lab.status(fault or "link_down", iface or "eth0")
     if action == "show":
-        command = str(args.get("command", "")).strip()
-        if not command:
-            raise DeviceError("缺少 command 参数")
+        command = _guard_cli(args.get("command"), "command")
         if not command.lower().startswith(("show ", "display ", "verify ")):
             raise DeviceError("action=show 仅允许只读命令")
         out = await lab._run(f'vtysh -c "{command}"')

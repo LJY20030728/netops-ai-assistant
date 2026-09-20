@@ -31,14 +31,19 @@ def _get_client() -> OpenAI:
 
 
 def _get_bge():
-    """懒加载 bge 模型（首次调用下载 ~100MB）。"""
+    """懒加载 bge 模型（首次调用下载 ~100MB）。
+    打包版（无 torch）返回 None：由 embed_texts 自动降级到哈希嵌入，保证功能可用。"""
     global _bge_model
     if _bge_model is None:
         # 国内镜像加速
         os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-        from sentence_transformers import SentenceTransformer
-        _bge_model = SentenceTransformer(_BGE_NAME, device="cpu")
-    return _bge_model
+        try:
+            from sentence_transformers import SentenceTransformer
+            _bge_model = SentenceTransformer(_BGE_NAME, device="cpu")
+        except Exception as exc:  # noqa: BLE001  (打包版无 torch / 无网络时降级)
+            print(f"[embedding] bge unavailable, fallback to hash embedding: {exc}")
+            _bge_model = False
+    return _bge_model or None
 
 
 def _local_embed(text: str, dim: int = _LOCAL_DIM) -> list[float]:
@@ -59,11 +64,14 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
         return []
     model_name = (settings.zhipu_embedding_model or "").lower()
 
-    # 1. bge 本地语义模型
+    # 1. bge 本地语义模型（不可用时自动降级到哈希，见 _get_bge）
     if model_name in ("bge", "bge-small", "bge-small-zh", "bge-small-zh-v1.5"):
         m = _get_bge()
-        embs = m.encode(texts, normalize_embeddings=True, show_progress_bar=False)
-        return [e.tolist() for e in embs]
+        if m is not None:
+            embs = m.encode(texts, normalize_embeddings=True, show_progress_bar=False)
+            return [e.tolist() for e in embs]
+        # bge 不可用（如打包版无 torch）：直接哈希降级，避免落入 API 分支
+        return [_local_embed(t) for t in texts]
 
     # 2. 哈希降级
     if (

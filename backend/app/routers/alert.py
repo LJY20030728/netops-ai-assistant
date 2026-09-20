@@ -1,4 +1,5 @@
 """Webhook 注册与告警接收路由。"""
+import asyncio
 import json
 import time
 
@@ -9,6 +10,7 @@ from app.config import DATA_DIR
 from app.agent import agent as agent_runner
 from app.security import audit
 from app.security.auth import require_role
+from app.security.injection import is_blocked, scan_prompt_injection
 from app import webhook as webhook_svc
 
 router = APIRouter(prefix="/api", tags=["alert"])
@@ -50,7 +52,8 @@ async def webhook_register(body: WebhookBody, role: str = Depends(require_role("
 
 @router.post("/alert/trigger")
 async def alert_trigger(body: AlertBody, role: str = Depends(require_role("operator"))):
-    result = webhook_svc.deliver(body.alert, body.device, body.scenario)
+    # webhook.deliver 是同步 urllib 调用（最长 8s/个），移入线程池避免阻塞事件循环
+    result = await asyncio.to_thread(webhook_svc.deliver, body.alert, body.device, body.scenario)
     audit.log("alert", actor=role, action="alert.trigger",
               detail=json.dumps({"alert": body.alert, "scenario": body.scenario,
                                  "delivered": result.get("delivered", 0)}, ensure_ascii=False))
@@ -68,6 +71,13 @@ async def alert_receive(body: AlertReceiveBody):
     text = text.strip()
     if not text:
         return {"ok": False, "message": "无告警内容（需 alert 字段或 alerts 数组）"}
+
+    # 与 /api/chat 同等：入口先做提示词注入扫描，命中即拒绝进入 Agent
+    flags = scan_prompt_injection(text)
+    if is_blocked(flags):
+        audit.log("alert", actor="operator", action="alert.injection_blocked",
+                  detail=json.dumps({"flags": flags, "text": text[:80]}, ensure_ascii=False))
+        return {"ok": False, "message": "检测到疑似提示词注入，已拒绝诊断。"}
 
     prompt = f"收到运维告警：{text}。请按排障流程分析可能根因，给出处置建议与验证步骤。"
     answer_parts: list[str] = []
@@ -93,7 +103,7 @@ async def alert_receive(body: AlertReceiveBody):
 
 
 @router.get("/alert/list")
-async def alert_list(limit: int = 20):
+async def alert_list(limit: int = 20, role: str = Depends(require_role("viewer"))):
     out: list[dict] = []
     if ALERT_DIAG_FILE.exists():
         for line in ALERT_DIAG_FILE.read_text(encoding="utf-8", errors="replace").splitlines():

@@ -36,7 +36,8 @@ async def topology_real(role: str = Depends(require_role("viewer"))):
     try:
         docker = _find_docker()
         proc = subprocess.run([docker, "ps", "--format", "{{.Names}}"],
-                              capture_output=True, text=True, timeout=5, encoding="utf-8", errors="replace")
+                              capture_output=True, text=True, timeout=5, encoding="utf-8", errors="replace",
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if proc.returncode != 0:
             return {"ok": False, "mode": "real", "docker_available": False,
                     "message": f"Docker 不可用：{proc.stderr[:200]}"}

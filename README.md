@@ -1,10 +1,11 @@
 # NetOps AI Assistant · 网络运维智能助手
 
-> 一个面向网络运维场景的 AI 全栈助手：自研 ReAct Agent + RAG 知识库 + 真实 FRR 实验室故障演练。
+> 面向网络运维场景的 AI 全栈助手：自研 ReAct Agent + RAG 知识库 + 真实 FRR 实验室故障演练 + 桌面应用。
 
-[![CI](https://github.com/your-org/netops-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/netops-assistant/actions)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688)
+![PyWebView](https://img.shields.io/badge/pywebview-5.x-green)
+![Tests](https://img.shields.io/badge/tests-46%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -18,35 +19,35 @@ NetOps AI Assistant 是一个**可落地的网络运维 AI 助手**，不是聊�
 - **自研 ReAct Agent**：LLM 决策 → 调用设备工具 → 观察结果 → 再决策，最多 6 步循环。
 - **双通道设备控制**：Netmiko SSH 读设备状态 + `docker exec` 在 FRR 容器上注入/恢复可逆故障（`link_down` / `ospf_cost` / `bgp_neighbor_down`）。
 - **RAG 知识库**：BM25 + 向量（bge-small-zh 本地）+ RRF 混合检索，覆盖 200+ 篇网络排障手册。
+- **思考过程可视化**：RAG 路径在检索后、回答前推送 `thinking` 事件，前端显示"💭 思考中…"动画，回答流式到达后自动消失。
 - **安全层**：提示词注入检测、RBAC 四角色（viewer/operator/admin）、滑动窗口限流、全量审计留痕。
-- **真实拓扑可视化**：3 台 FRR 容器跑 OSPF + eBGP，前端 5 秒轮询邻居/路由状态，故障注入时节点变色。
+- **真实拓扑可视化**：3 台 FRR 容器跑 OSPF + eBGP，前端 5 秒轮询邻居/路由状态；Docker 未启动时拓扑页自动降级为"启动 Docker"引导界面，不写死假拓扑。
 
 ### 技术栈
 
 | 层 | 技术 |
 |---|---|
 | 后端 | Python 3.11+ · FastAPI · Uvicorn · Pydantic Settings |
-| 前端 | 原生 HTML/CSS/JS · SSE 流式 · VSCode 式分栏 |
+| 前端 | 原生 HTML/CSS/JS · SSE 流式 · 分栏布局 · 纳西妲 Q 版绿白主题 |
 | LLM | 智谱 GLM-4.5-Air（OpenAI 兼容协议，可切豆包） |
-| Embedding | BAAI/bge-small-zh-v1.5（本地 CPU，512 维，零 API 成本） |
+| Embedding | BAAI/bge-small-zh-v1.5（本地 CPU，512 维）；无 torch 环境自动降级哈希向量 |
 | 设备仿真 | Docker · FRR（Free Range Routing）· OSPF + eBGP |
 | 设备交互 | Netmiko（SSH）· docker exec（带外 vtysh） |
-| 应用壳 | pywebview（独立桌面窗口，非浏览器） |
-| 测试 | pytest · FastAPI TestClient |
-| CI | GitHub Actions（ubuntu-latest · Python 3.11） |
+| 应用壳 | pywebview（独立桌面窗口，非浏览器）· PyInstaller 打包 |
+| 测试 | pytest · FastAPI TestClient（46 用例全绿） |
 
 ### 架构
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Frontend (index.html)                                   │
-│  纳西妲 Q 版绿白主题 · 分栏布局 · SSE 流式               │
+│  纳西妲 Q 版绿白主题 · 分栏布局 · SSE 流式思考动画        │
 └──────────────┬──────────────────────────────────────────┘
                │ HTTP / SSE
 ┌──────────────▼──────────────────────────────────────────┐
 │  FastAPI (app/main.py → routers/)                        │
-│  ├── chat.py      SSE + RAG + Agent 路由                 │
-│  ├── topology.py  FRR 实时拓扑                           │
+│  ├── chat.py      SSE + RAG + thinking + Agent 路由     │
+│  ├── topology.py  FRR 实时拓扑（含 Docker 三态）         │
 │  ├── docker.py    Docker 状态/启动                       │
 │  ├── sessions.py 多会话持久化                            │
 │  └── ...                                            │
@@ -68,7 +69,7 @@ NetOps AI Assistant 是一个**可落地的网络运维 AI 助手**，不是聊�
 
 ```bash
 # 1. 克隆
-git clone https://github.com/your-org/netops-assistant.git
+git clone https://github.com/LJY20030728/netops-ai-assistant.git
 cd netops-assistant
 
 # 2. 后端依赖
@@ -85,7 +86,7 @@ cp backend/.env.example backend/.env
 python launcher.py
 # 或手动：
 cd backend
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+start_backend.bat   # Windows 一键启动（带日志）
 ```
 
 ### 测试
@@ -95,7 +96,7 @@ cd backend
 pytest tests/ -v
 ```
 
-单元测试覆盖：意图判定、会话持久化、故障状态机、路由冒烟（20 个用例，~1.2s）。
+覆盖：意图判定、会话持久化、故障状态机、路由冒烟、命令注入拦截、非法 session_id、空白消息、注入拦截、拓扑三态（46 用例）。
 
 ### 配置项（backend/.env）
 
@@ -114,21 +115,20 @@ pytest tests/ -v
 netops-assistant/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py            # FastAPI 入口（40 行装配）
-│   │   ├── routers/           # 按功能拆分的路由（10 个）
+│   │   ├── main.py            # FastAPI 入口
+│   │   ├── routers/           # 按功能拆分的路由
 │   │   ├── agent/             # ReAct Agent + tool registry
 │   │   ├── rag/               # 混合检索 + bge embedding
 │   │   ├── llm/               # LLM provider 抽象
 │   │   └── security/          # RBAC + 限流 + 注入检测 + 审计
 │   ├── knowledge_base/       # 200+ 篇排障手册
-│   └── tests/                # pytest 单元测试
+│   └── tests/                # pytest（46 用例）
 ├── frontend/
-│   ├── index.html            # 单页应用（819 行）
-│   └── assets/
+│   ├── index.html            # 单页应用
+│   └── assets/               # 图标 / 主题素材
 ├── docker-compose.frr.yml    # 3 台 FRR 容器
-├── Dockerfile                # 多阶段构建
 ├── launcher.py               # pywebview 桌面启动器
-└── .github/workflows/ci.yml  # GitHub Actions
+└── start_backend.bat         # Windows 一键启动脚本
 ```
 
 ---
@@ -142,19 +142,25 @@ NetOps AI Assistant is a **production-oriented network operations AI copilot**, 
 - **Custom ReAct Agent**: LLM reasons → calls device tools → observes → loops (up to 6 steps).
 - **Dual-channel device control**: Netmiko SSH for read-only state, `docker exec` for reversible fault injection on FRR containers (`link_down` / `ospf_cost` / `bgp_neighbor_down`).
 - **RAG knowledge base**: BM25 + vector (local bge-small-zh) + RRF hybrid retrieval over 200+ troubleshooting runbooks.
+- **Thinking visualization**: RAG path pushes a `thinking` SSE event after retrieval, before streaming the answer; the UI shows a "💭 thinking…" breathing animation that fades when the first token arrives.
 - **Security layer**: prompt-injection detection, RBAC (viewer/operator/admin), sliding-window rate limiter, full audit trail.
-- **Real topology visualization**: 3 FRR containers running OSPF + eBGP, frontend polls neighbors/routes every 5s, nodes flash on fault injection.
+- **Real topology visualization**: 3 FRR containers running OSPF + eBGP, frontend polls neighbors/routes every 5s; when Docker is down the topology page gracefully degrades to a "start Docker" guide instead of rendering a fake topology.
 
 ### Quick start
 
 ```bash
-git clone https://github.com/your-org/netops-assistant.git
+git clone https://github.com/LJY20030728/netops-ai-assistant.git
 cd netops-assistant
 python -m venv .venv && source .venv/bin/activate
 pip install -r backend/requirements.txt
 cp backend/.env.example backend/.env  # fill in ZHIPU_API_KEY
 python launcher.py
 ```
+
+### Notes
+
+- Running from source with `ZHIPU_EMBEDDING_MODEL=bge` uses the local BAAI/bge-small-zh-v1.5 model (requires `sentence-transformers`).
+- The PyInstaller package intentionally excludes torch/transformers; at runtime it automatically falls back to a dependency-free hash embedding so the packaged app stays small and starts fast.
 
 ### License
 

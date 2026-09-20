@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/kb", tags=["kb"])
 
 
 @router.get("/stats")
-async def kb_stats():
+async def kb_stats(role: str = Depends(require_role("viewer"))):
     return {
         "chunks": kb_store.count(),
         "kb_dir": str(KB_DIR),

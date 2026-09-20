@@ -50,6 +50,8 @@
   .traceline:last-child{border-bottom:none;}
   .traceline .tk{color:var(--accent);font-weight:600;}
   .traceline .ok{color:#7BD88F;} .traceline .no{color:var(--err);}
+  .thinking-anim{animation:thinkPulse 1.2s ease-in-out infinite;color:#6AA;font-weight:500;}
+  @keyframes thinkPulse{0%,100%{opacity:.45;}50%{opacity:1;}}
   .cursor{display:inline-block;width:8px;height:16px;background:var(--accent);vertical-align:-2px;animation:blink 1s steps(2) infinite;margin-left:2px;}
   @keyframes blink{50%{opacity:0;}}
   footer{padding:14px 16px;border-top:1px solid var(--line);background:rgba(22,43,51,.9);}
@@ -283,6 +285,12 @@
   var authbtn = document.getElementById('authbtn');
   var rolebadge = document.getElementById('rolebadge');
 
+  // 当前 SSE 流的 AbortController：切换/删除会话时中止旧流，防止旧响应继续写 DOM
+  var activeController = null;
+  function abortStream(){
+    if(activeController){ try{ activeController.abort(); }catch(e){} activeController = null; }
+  }
+
   function apiFetch(url, opts){
     opts = opts || {};
     var h = Object.assign({}, opts.headers || {});
@@ -372,7 +380,7 @@
     var decoder = new TextDecoder();
     var buf = '';
     return (async function(){
-      var bubble = null, acc = '', curSources = null, traceBox = null;
+      var bubble = null, acc = '', curSources = null, traceBox = null, thinkLine = null;
       function ensureTrace(){
         if(traceBox) return traceBox;
         var row = el('div', 'msg bot');
@@ -399,6 +407,8 @@
             try{ data = JSON.parse(line.slice(6)); }catch(e){ return; }
             if(data.type === 'delta'){
               if(!bubble){ bubble = appendMsg('assistant', ''); }
+              if(thinkLine && thinkLine.parentNode){ thinkLine.parentNode.removeChild(thinkLine); }
+              thinkLine = null;
               acc += data.content;
               bubble.textContent = acc;
               chat.scrollTop = chat.scrollHeight;
@@ -408,10 +418,26 @@
               var box = ensureTrace();
               var line = el('div', 'traceline');
               var mark = data.ok ? '<span class="ok">✓</span>' : '<span class="no">✗</span>';
-              var args = data.args ? JSON.stringify(data.args) : '';
-              var result = (data.result || '').replace(/\n/g, ' ').slice(0, 140);
+              var args = data.args ? esc(JSON.stringify(data.args)) : '';
+              var result = esc((data.result || '').replace(/\n/g, ' ').slice(0, 140));
               line.innerHTML = mark + ' <span class="tk">' + (data.tool||'') + '</span> ' + args + '<br>' + result;
               box.appendChild(line);
+              chat.scrollTop = chat.scrollHeight;
+            }else if(data.type === 'thinking'){
+              var txt = (data.text||'').replace(/</g,'&lt;');
+              if(data.step){
+                // Agent 步骤思考（保留原有样式）
+                var box = ensureTrace();
+                var line = el('div', 'traceline');
+                line.style.cssText = 'opacity:.75;font-size:12px;color:#8aa;white-space:pre-wrap;';
+                line.innerHTML = '💭 <span style="color:#6aa">第' + (data.step||'') + '步思考</span><br>' + txt;
+                box.appendChild(line);
+              }else{
+                // 普通问答的"思考中"占位（收到回答即消失）
+                thinkLine = el('div', 'traceline thinking-anim');
+                thinkLine.innerHTML = '💭 <span style="color:#6aa">' + txt + '</span>';
+                ensureTrace().appendChild(thinkLine);
+              }
               chat.scrollTop = chat.scrollHeight;
             }else if(data.type === 'done'){
               if(!bubble){ bubble = appendMsg('assistant', ''); }
@@ -441,19 +467,23 @@
     refreshSessions();
     sending = true;
     sendBtn.disabled = true;
+    activeController = new AbortController();
     try{
       var res = await apiFetch('/api/chat', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({message:text, history: history.slice(0, -1), session_id: sessionId})
+        body: JSON.stringify({message:text, history: history.slice(0, -1), session_id: sessionId}),
+        signal: activeController.signal
       });
       if(!res.ok || !res.body){ throw new Error('请求失败 HTTP ' + res.status + (res.status === 403 ? '（权限不足）' : '')); }
       await parseSSE(res);
     }catch(e){
-      appendMsg('assistant', '连接失败：' + e.message, true);
+      if(e.name === 'AbortError'){ /* 用户切换/清空会话导致流被中止：静默 */ }
+      else appendMsg('assistant', '连接失败：' + e.message, true);
     }finally{
       sending = false;
       sendBtn.disabled = false;
+      activeController = null;
       input.focus();
     }
   }
@@ -666,37 +696,60 @@
   }
 
   var topoTimer = null;
+
+  function showTopoState(bannerHtml, svgHint){
+    // 统一降级：清空拓扑 + 顶部横幅 + 中央提示
+    topoBanner.style.display = 'block';
+    topoBanner.innerHTML = bannerHtml;
+    svgBox.innerHTML = '<div class="topo-hint">' + svgHint + '</div>';
+    topoCards.innerHTML = '';
+  }
+  function bindStartDockerBtn(){
+    var sdb = document.getElementById('startDockerBtn');
+    if(sdb) sdb.addEventListener('click', function(){
+      sdb.textContent = '启动中…'; sdb.disabled = true;
+      apiFetch('/api/docker/start', {method:'POST'}).then(function(r){ return r.json(); }).then(function(r){
+        if(r.ok){ setStatus(r.message); setTimeout(function(){ loadTopo(true); }, 3000); }
+        else { alert(r.message || '启动失败'); }
+        sdb.textContent = '启动 Docker'; sdb.disabled = false;
+      }).catch(function(e){ alert('启动失败：' + e.message); sdb.textContent='启动 Docker'; sdb.disabled=false; });
+    });
+  }
+
   function loadTopo(manual){
     if(manual) topoRefresh.disabled = true;
-    apiFetch('/api/topology/real').then(function(r){ return r.json(); }).then(function(d){
-      topoRefresh.disabled = false;
-      if(!d.ok){
-        topoBanner.style.display = 'block';
-        topoBanner.innerHTML = '未检测到 Docker 服务 <button id="startDockerBtn" style="margin-left:10px;padding:4px 12px;background:linear-gradient(135deg,#7CB342,#558B2F);color:#fff;border:none;border-radius:8px;cursor:pointer;">启动 Docker</button>';
-        svgBox.innerHTML = '<div class="topo-hint">未检测到 Docker</div>';
-        topoCards.innerHTML = '';
-        var sdb = document.getElementById('startDockerBtn');
-        if(sdb) sdb.addEventListener('click', function(){
-          sdb.textContent = '启动中…'; sdb.disabled = true;
-          apiFetch('/api/docker/start', {method:'POST'}).then(function(r){ return r.json(); }).then(function(r){
-            if(r.ok){ setStatus(r.message); setTimeout(function(){ loadTopo(true); }, 3000); }
-            else { alert(r.message); }
-            sdb.textContent = '启动 Docker'; sdb.disabled = false;
-          }).catch(function(e){ alert('启动失败：'+e.message); sdb.textContent='启动 Docker'; sdb.disabled=false; });
-        });
-        return;
-      }
-      topoBanner.style.display = 'none';
-      renderTopoSvg(d.devices);
-      renderTopoCards(d.devices);
-      loadTimeline();
-      setStatus('真实拓扑已刷新 · ' + new Date().toLocaleTimeString());
-      if(!topoTimer){ topoTimer = setInterval(function(){ if(autoRefresh.checked) loadTopo(false); }, 5000); }
-    }).catch(function(e){
-      topoRefresh.disabled = false;
-      topoBanner.style.display = 'block';
-      topoBanner.textContent = '读取拓扑失败：' + e.message + '（请确认后端已启动、DEVICE_MODE=real、FRR 容器已拉起）';
-    });
+    apiFetch('/api/topology/real')
+      .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function(d){
+        topoRefresh.disabled = false;
+        var hasDevices = d.devices && Object.keys(d.devices).length > 0;
+        if(!d.ok || !hasDevices){
+          // 状态 B：Docker 未启用 / 无 FRR 容器 → 拓扑消失 + 启动按钮
+          var reason = (d.message || (d.docker_available === false ? 'Docker 服务未启用' : '未检测到 FRR 容器')).replace(/[<>&]/g,'');
+          showTopoState(
+            '未检测到 Docker 服务 <button id="startDockerBtn" style="margin-left:10px;padding:4px 12px;background:linear-gradient(135deg,#7CB342,#558B2F);color:#fff;border:none;border-radius:8px;cursor:pointer;">启动 Docker</button>',
+            '未检测到 Docker · ' + reason
+          );
+          bindStartDockerBtn();
+          return;
+        }
+        // 状态 A：Docker 正常 → 渲染真实拓扑
+        topoBanner.style.display = 'none';
+        renderTopoSvg(d.devices);
+        renderTopoCards(d.devices);
+        loadTimeline();
+        setStatus('真实拓扑已刷新 · ' + new Date().toLocaleTimeString());
+      })
+      .catch(function(e){
+        topoRefresh.disabled = false;
+        // 状态 C：后端不可达（非 Docker 问题）→ 明确提示，不误报 Docker
+        showTopoState(
+          '后端服务未连接（请双击 start_backend.bat 启动后端）',
+          '后端未连接，无法读取拓扑'
+        );
+      });
+    // 轮询始终运行（无论成功失败），Docker 中途断开/恢复都会被捕获
+    if(!topoTimer){ topoTimer = setInterval(function(){ if(autoRefresh.checked) loadTopo(false); }, 5000); }
   }
   // ---- 事件时间线（方向1）：读审计流，垂直时间轴展示 ----
   function tlClass(ev){
@@ -730,6 +783,10 @@
   // ---- 一键恢复全部 FRR 故障（演练后兜底，admin） ----
   var topoRecover = document.getElementById('topoRecover');
   topoRecover.addEventListener('click', function(){
+    if(document.getElementById('startDockerBtn')){
+      alert('Docker 未启用，请先点击「启动 Docker」再恢复故障。');
+      return;
+    }
     topoRecover.disabled = true;
     topoRecover.textContent = '恢复中…';
     apiFetch('/api/frr/recover-all', {method:'POST'}).then(function(r){ return r.json(); }).then(function(d){
@@ -739,7 +796,11 @@
         setStatus('已恢复 ' + d.recovered.length + ' 个故障组合' + (d.errors && d.errors.length ? '（' + d.errors.length + ' 个失败：' + d.errors.join('; ') + '）' : ''));
         loadTopo(true);
       }else{ alert('恢复失败：' + (d.message || '未知错误')); }
-    }).catch(function(e){ topoRecover.disabled = false; topoRecover.textContent = '一键恢复'; alert('恢复失败：' + e.message); });
+    }).catch(function(e){
+      topoRecover.disabled = false;
+      topoRecover.textContent = '一键恢复';
+      alert('恢复失败：后端未连接或已退出，请双击 start_backend.bat 重启后端后重试。');
+    });
   });
 
   // ---- 布局切换（分栏/仅对话/仅拓扑） ----
@@ -785,6 +846,7 @@
           apiFetch('/api/session/' + encodeURIComponent(sid), {method:'DELETE'}).then(function(){
             refreshSessions();
             if(sid === sessionId){
+              abortStream();  // 删除当前会话时中止进行中的流
               clearChatDom();
               appendMsg('bot', '已删除当前会话，点左上角「+ 新建」开始新对话。');
             }
@@ -819,6 +881,7 @@
 
   function switchSession(sid){
     if(!sid || sid === sessionId) return;
+    abortStream();  // 中止当前流的旧响应，避免写入新会话 DOM
     sessionId = sid;
     localStorage.setItem('netops_sid', sid);
     clearChatDom();

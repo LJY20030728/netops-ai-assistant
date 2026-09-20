@@ -12,9 +12,13 @@ from app.config import DATA_DIR
 SESSION_DIR = DATA_DIR / "sessions"
 
 
+# 会话 ID 白名单之外一律拒绝：路径分隔符 + Windows 非法文件名字符 + 控制字符
+_ILLEGAL_CHARS = set('<>:"/\\|?*') | set(chr(i) for i in range(32))
+
+
 def _path(session_id: str) -> Path:
-    # 会话 ID 只允许安全字符，防路径穿越
-    if not session_id or any(ch in session_id for ch in "/\\:") or ".." in session_id:
+    # 会话 ID 只允许安全字符，防路径穿越与非法文件名（Windows 上 | * ? < > 会导致 OSError）
+    if not session_id or ".." in session_id or any(ch in session_id for ch in _ILLEGAL_CHARS):
         raise ValueError("非法 session_id")
     return SESSION_DIR / f"{session_id}.jsonl"
 

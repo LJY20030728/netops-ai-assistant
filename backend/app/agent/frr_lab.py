@@ -89,6 +89,9 @@ class FrrLab:
         避免被容器 shell 当成独立命令执行（sh: show: not found）。
         """
         docker = _find_docker()
+        # 第二道防线：即便调用方已净化，执行前仍拒绝 shell 元字符（防 sh -c 拼接注入）
+        if any(bad in cmd for bad in ("&&", "||", "|", ";", "`", "$(", "${", ">", "<", "\n", "\r")):
+            raise DeviceError("拒绝执行：命令包含 shell 元字符")
         if not cmd.strip().startswith("vtysh"):
             cmd = f'vtysh -c "{cmd}"'
         argv = [docker, "exec", self.device.name, "sh", "-c", cmd]
@@ -101,6 +104,7 @@ class FrrLab:
                 timeout=30,
                 encoding="utf-8",
                 errors="replace",
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             out = (proc.stdout or "").strip() + (("\n" + proc.stderr.strip()) if proc.stderr and proc.stderr.strip() else "")
             if proc.returncode != 0 and not out:

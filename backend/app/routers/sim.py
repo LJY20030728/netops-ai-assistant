@@ -3,13 +3,14 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.agent.devices import get_current_scenario, set_current_scenario
+from app.agent.devices import VALID_SCENARIOS, get_current_scenario, set_current_scenario
 from app.security import audit
 from app.security.auth import require_role
 
 router = APIRouter(prefix="/api/sim", tags=["sim"])
 
-AVAILABLE = ["flapping", "stp_loop", "arp_poison", "bgp_flap", "acl_deny"]
+# 与 devices.py 的 8 个故障剧本保持一致（单一事实来源）
+AVAILABLE = list(VALID_SCENARIOS)
 
 
 class ScenarioBody(BaseModel):

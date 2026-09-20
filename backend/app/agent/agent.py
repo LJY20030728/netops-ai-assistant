@@ -240,6 +240,8 @@ async def run_agent(message: str, history: list[dict], role: str = "operator") -
         while steps < MAX_STEPS:
             steps += 1
             decision_text = await complete_json(_decision_messages(history, message, tool_messages))
+            # 把 LLM 的原始决策透传给前端，让用户看到思考过程
+            yield {"type": "thinking", "step": steps, "text": decision_text[:800]}
             parsed = _parse_react(decision_text)
 
             if parsed is None or isinstance(parsed, _Finish):
