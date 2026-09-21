@@ -8,7 +8,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688)
 ![PyWebView](https://img.shields.io/badge/pywebview-5.x-green)
-![pytest](https://img.shields.io/badge/tests-51%20passed%20%C2%B7%203%20skipped-brightgreen)
+![pytest](https://img.shields.io/badge/tests-55%20passed%20%C2%B7%203%20skipped-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -85,7 +85,7 @@ NetOps AI Assistant 把这两件事接起来：
 - **告警路由加权**：确定性告警规则命中的手册在 RRF 分上叠加 boost，不替代检索而是加权；
 - **文档级去重**：同一来源只保留最高分 chunk，避免同文档多 chunk 霸榜；
 - **Rerank 评测驱动**：代码里保留了智谱 rerank 接入，但用领域查询做过离线评测——通用 rerank 在本领域是负优化（权重 0.4 时 MRR 0.566，0.2 时 0.693，纯 RRF 0.891），因此 `rerank_weight` 默认 0。这是用数据调参而不是堆组件。
-- **检索质量可量化（Recall@5 / MRR）**：`backend/app/rag/evaluate.py` 内置 96 条标注评测集（每条期望命中文档，按 standard/colloquial/terse/noisy/shorthand 五种真实问法分组），一键跑：`python -m app.rag.evaluate`。当前线上 hybrid 配置（BM25+向量+RRF）实测 **Recall@5=0.990（95/96）、MRR=0.748**；纯向量基线 R@5=0.865/MRR=0.680。最弱变体是口语化工单（colloquial MRR=0.50），已在 `tests/test_eval_smoke.py` 加静态校验防标注漂移。
+- **检索质量可量化（Recall@5 / MRR）**：`backend/app/rag/evaluate.py` 内置 96 条标注评测集（每条期望命中文档，按 standard/colloquial/terse/noisy/shorthand 五种真实问法分组），一键跑：`python -m app.rag.evaluate`。当前线上 hybrid 配置（BM25+向量+RRF）实测 **Recall@5=1.000（96/96）、MRR=0.759**；纯向量基线 R@5=0.865/MRR=0.680。最弱变体是口语化工单（colloquial MRR=0.50），已在 `tests/test_eval_smoke.py` 加静态校验防标注漂移。
 
 ### 4. FRR 真实协议实验室（方案 B）
 
@@ -134,7 +134,7 @@ flowchart TB
     end
 
     subgraph Agent["ReAct 决策循环 (手写, ~300行)"]
-        Reason["Reasoning<br/>(智谱 glm-4.5-air)"]
+        Reason["Reasoning<br/>(智谱 glm-4-flash)"]
         Tool["Tool Call<br/>(工具名/设备名预校验)"]
         Trace["Trace 落盘<br/>steps.jsonl"]
     end
@@ -222,7 +222,7 @@ flowchart TB
 
 - **协议栈级验证**：故障注入后 OSPF 邻居状态、BGP 会话、路由表变化由 FRR 守护进程（zebra/ospfd/bgpd）真实产生，前端拓扑直接消费 vtysh 文本解析结果，不经过状态模拟层；
 - **Agent 闭环可观测**：ReAct 循环、工具 JSON 协议、决策容错、强制取证策略均在 `agent/agent.py` 内显式实现，无框架中间层；每一步的决策原文与工具返回通过 SSE 下发，便于离线复盘；
-- **检索权重由离线评测确定**：BM25 / 向量 / RRF / rerank 的候选数与融合权重基于 60 条领域查询的 MRR 评估调参，而非按经验默认；
+- **检索权重由离线评测确定**：BM25 / 向量 / RRF / rerank 的候选数与融合权重基于 96 条领域查询的 MRR 评估调参，而非按经验默认；
 - **纵深防御**：提示词注入分级拦截、RBAC 工具级授权、滑动窗口限流、审计日志落盘、CLI 参数元字符过滤（入口与执行前双重）；
 - **自包含运行**：PyInstaller onedir 打包，无 torch 环境时 embedding 自动降级为哈希向量，不依赖外部向量数据库或消息队列。
 
@@ -270,7 +270,7 @@ cd backend
 pytest tests/ -q
 ```
 
-51 个用例覆盖：意图判定、会话持久化、故障状态机、路由冒烟、命令注入拦截、非法 session_id、空白消息、注入检测、拓扑健康度判定。
+55 个用例覆盖：意图判定、会话持久化、故障状态机、路由冒烟、命令注入拦截、非法 session_id、空白消息、注入检测、拓扑健康度判定。
 
 ## 配置项（backend/.env）
 
@@ -296,7 +296,7 @@ netops-assistant/
 │   │   ├── llm/               # LLM provider 抽象（智谱/豆包）
 │   │   └── security/          # 注入检测/RBAC/限流/审计
 │   ├── knowledge_base/       # 排障手册语料
-│   └── tests/                # pytest（51 用例）
+│   └── tests/                # pytest（55 用例）
 ├── frontend/
 │   ├── index.html            # 单页应用（HTML 结构）
 │   ├── styles.css            # 独立样式（纳西妲绿白主题）
@@ -313,7 +313,7 @@ netops-assistant/
 
 NetOps AI Assistant is an AI-agent copilot for network troubleshooting. Rather than answering from parametric memory, its hand-written ReAct loop drives an LLM to **collect evidence from real devices** (Netmiko CLI / out-of-band `docker exec vtysh`) before concluding. A three-container FRR lab runs real OSPF + eBGP, and the agent can inject and recover reversible faults (`link_down` / `ospf_cost` / `bgp_neighbor_down`) while observing genuine neighbor and route changes.
 
-Every Agent run writes a JSONL trace under `bbackend/data/traces/<session_id>/` (thoughts, tool calls, latency, hallucinated-tool/device rejections, final summary), and hallucinated tool or device names are rejected before any SSH command is sent. The retrieval layer combines a from-scratch BM25 (CJK unigram+bigram tokenization), local `bge-small-zh` embeddings, and RRF fusion, with query expansion and alert routing. A 60-query domain evaluation drove the decision to keep the third-party reranker disabled (it was a net negative). A security layer adds prompt-injection heuristics, three-role RBAC, rate limiting, and an audit trail.
+Every Agent run writes a JSONL trace under `bbackend/data/traces/<session_id>/` (thoughts, tool calls, latency, hallucinated-tool/device rejections, final summary), and hallucinated tool or device names are rejected before any SSH command is sent. The retrieval layer combines a from-scratch BM25 (CJK unigram+bigram tokenization), local `bge-small-zh` embeddings, and RRF fusion, with query expansion and alert routing. A 96-query domain evaluation drove the decision to keep the third-party reranker disabled (it was a net negative). A security layer adds prompt-injection heuristics, three-role RBAC, rate limiting, and an audit trail.
 
 The stack is intentionally dependency-light: no LangChain/LangGraph, no Qdrant server, no Node build chain. The desktop shell is pywebview, packaged with PyInstaller; when torch is absent the embedding layer degrades to a hash vector so the build stays small. The system implements the closed loop of LLM tool-use against a real routing stack, scoped to a single node.
 
