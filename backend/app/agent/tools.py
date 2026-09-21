@@ -23,7 +23,7 @@ def _real_mode_device_guard(device) -> None:
     if settings.device_mode == "real" and device.device_type != "frr":
         raise DeviceError(
             f"设备 {device.name} 是仿真设备，当前为 real 模式（仅 frr1-3 真实设备可用）；"
-            "仿真设备需在 simulate 模式或启动 sim_ssh 服务后使用"
+            "仿真设备需在 simulate 模式下使用"
         )
 
 
