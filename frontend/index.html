@@ -21,12 +21,8 @@
     <span class="navtab" data-layout="topo">仅拓扑</span>
   </nav>
   <div id="status"><span class="dot"></span><span>连接检测中…</span></div>
-  <div id="metrics" title="最近 100 次请求 P50/P95 延迟与 token 用量（每 10s 刷新）">…</div>
-  <div id="authbar" style="display:none;">
-    <input id="authtoken" type="password" placeholder="访问令牌（开启鉴权时）" autocomplete="off">
-    <button id="authbtn">登录</button>
-    <span id="rolebadge"></span>
-  </div>
+  
+  <button id="settingsBtn" title="设置：API Key、模型、知识库路径" style="height:32px;padding:0 14px;font-size:13px;border:1px solid #2E7D32;background:#fff;color:#2E7D32;border-radius:16px;cursor:pointer;">⚙ 设置</button>
   <div id="simbar" style="display:none;">
     <span>仿真故障场景</span>
     <select id="simselect">
@@ -87,6 +83,6 @@
   <div class="hint">Enter 发送 · Shift+Enter 换行 · 模型由后端配置（智谱 GLM）</div>
 </footer>
 
-<script type="module" src="/js/app.js"></script>
+<script type="module" src="/js/app.js?v=20260921c"></script>
 </body>
 </html>

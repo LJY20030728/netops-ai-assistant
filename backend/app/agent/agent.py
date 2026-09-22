@@ -249,6 +249,8 @@ async def run_agent(message: str, history: list[dict], role: str = "operator",
     try:
         while steps < MAX_STEPS:
             steps += 1
+            # 先 yield 一个"正在思考"占位，让用户立即看到反馈（complete_json 可能要 5-15 秒）
+            yield {"type": "thinking", "text": "正在分析上下文，选择下一步动作..."}
             decision_text = await complete_json(_decision_messages(history, message, tool_messages))
             # 把 LLM 的原始决策透传给前端，让用户看到思考过程
             yield {"type": "thinking", "step": steps, "text": decision_text[:800]}

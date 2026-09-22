@@ -8,7 +8,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688)
 ![PyWebView](https://img.shields.io/badge/pywebview-5.x-green)
-![pytest](https://img.shields.io/badge/tests-55%20passed%20%C2%B7%203%20skipped-brightgreen)
+![pytest](https://img.shields.io/badge/tests-62%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -207,11 +207,11 @@ flowchart TB
 | Agent 框架 | **手写 ReAct 循环** | LangChain/LangGraph 封装了调度循环，工具调用链不透明，运行时难以定位"模型为什么这步调了这个工具"；手写循环约 300 行，决策协议、容错、强制取证均显式可查，后续要条件分支/并行可在此基础上演进。 |
 | Web 框架 | FastAPI + Uvicorn | 原生 async 适配 Agent 的多步异步工具调用，SSE 流式支持好，Pydantic 自带请求校验。 |
 | 前端 | **原生 HTML/CSS/JS 单页** | 这个项目交互不复杂（聊天 + 拓扑 + 设置），引入 React/Vue 只会增加构建链和包体；SSE、分栏、轮询原生 API 足够。 |
-| LLM | 智谱 GLM-4.5-Air（OpenAI 兼容协议） | 国内可直连、有免费额度；代码里抽象了 `LLM_PROVIDER`，切换豆包只需改配置不改代码。 |
+| LLM | 智谱 glm-4-flash（OpenAI 兼容协议，免费模型） | 国内可直连、有免费额度；代码里抽象了 `LLM_PROVIDER`，切换豆包只需改配置不改代码。 |
 | Embedding | **本地 bge-small-zh-v1.5** | API embedding 按量计费且知识库内容要外传；本地模型 512 维、CPU 可跑、零边际成本。打包版无 torch 时再降级为纯哈希向量，保证功能可用。 |
 | 向量库 | **NumpyVectorStore（.npy）** | 单机演示不需要 Qdrant/FAISS 的服务化部署；门面层 `store.py` 保留了后端接口，将来要换 Qdrant 只改配置。 |
 | 网络仿真 | **Docker + FRR** | 用户机器没装 EVE-NG/GNS3；FRR 是真实路由协议栈（真 OSPF 邻接、真路由表），容器秒级起停、跨平台，比"脚本模拟设备输出"真实得多。 |
-| 桌面壳 | **pywebview** | 同一台机器上 Python 栈统一；Electron 体积上百 MB 且需要 Node 工具链，Tauri 要 Rust。pywebview 调系统 WebView2，最终包体 18.7MB。 |
+| 桌面壳 | **pywebview** | 同一台机器上 Python 栈统一；Electron 体积上百 MB 且需要 Node 工具链，Tauri 要 Rust。pywebview 调系统 WebView2，最终包体约 125MB（PyInstaller onedir，含运行时与前端资源）。 |
 | 重排（rerank） | **接入但默认关闭** | 60 条领域评测实测通用 rerank 是负优化；保留接入路径，不迷信组件数量。 |
 
 ---
@@ -277,7 +277,7 @@ pytest tests/ -q
 | 变量 | 说明 | 默认 |
 |---|---|---|
 | `ZHIPU_API_KEY` | 智谱 API Key | 空 |
-| `ZHIPU_MODEL` | 对话模型 | glm-4-flash（.env 可改 glm-4.5-air） |
+| `ZHIPU_MODEL` | 对话模型 | glm-4-flash（.env 可改 glm-4.5-air / glm-4-plus 等） |
 | `LLM_PROVIDER` | zhipu / doubao | zhipu |
 | `ZHIPU_EMBEDDING_MODEL` | bge / local / embedding-3 | bge（本地） |
 | `DEVICE_MODE` | real / simulate | simulate |
@@ -313,7 +313,7 @@ netops-assistant/
 
 NetOps AI Assistant is an AI-agent copilot for network troubleshooting. Rather than answering from parametric memory, its hand-written ReAct loop drives an LLM to **collect evidence from real devices** (Netmiko CLI / out-of-band `docker exec vtysh`) before concluding. A three-container FRR lab runs real OSPF + eBGP, and the agent can inject and recover reversible faults (`link_down` / `ospf_cost` / `bgp_neighbor_down`) while observing genuine neighbor and route changes.
 
-Every Agent run writes a JSONL trace under `bbackend/data/traces/<session_id>/` (thoughts, tool calls, latency, hallucinated-tool/device rejections, final summary), and hallucinated tool or device names are rejected before any SSH command is sent. The retrieval layer combines a from-scratch BM25 (CJK unigram+bigram tokenization), local `bge-small-zh` embeddings, and RRF fusion, with query expansion and alert routing. A 96-query domain evaluation drove the decision to keep the third-party reranker disabled (it was a net negative). A security layer adds prompt-injection heuristics, three-role RBAC, rate limiting, and an audit trail.
+Every Agent run writes a JSONL trace under `backend/data/traces/<session_id>/` (thoughts, tool calls, latency, hallucinated-tool/device rejections, final summary), and hallucinated tool or device names are rejected before any SSH command is sent. The retrieval layer combines a from-scratch BM25 (CJK unigram+bigram tokenization), local `bge-small-zh` embeddings, and RRF fusion, with query expansion and alert routing. A 96-query domain evaluation drove the decision to keep the third-party reranker disabled (it was a net negative). A security layer adds prompt-injection heuristics, three-role RBAC, rate limiting, and an audit trail.
 
 The stack is intentionally dependency-light: no LangChain/LangGraph, no Qdrant server, no Node build chain. The desktop shell is pywebview, packaged with PyInstaller; when torch is absent the embedding layer degrades to a hash vector so the build stays small. The system implements the closed loop of LLM tool-use against a real routing stack, scoped to a single node.
 

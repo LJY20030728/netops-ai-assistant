@@ -6,6 +6,8 @@
   var statusBox = document.getElementById('status');
   var history = [];
   var sending = false;
+  var activeController = null;
+  function abortStream(){ if(activeController){ try{ activeController.abort(); }catch(e){} activeController = null; } }
 
   // ---- 会话持久化（M5 工程化）：刷新/重启后可恢复多轮对话 ----
   var sessionId = localStorage.getItem('netops_sid');
@@ -14,77 +16,11 @@
     localStorage.setItem('netops_sid', sessionId);
   }
 
-  // ---- 认证状态 ----
-  var authToken = localStorage.getItem('netops_token') || '';
-  var authEnabled = false;
-  var authbar = document.getElementById('authbar');
-  var authtoken = document.getElementById('authtoken');
-  var authbtn = document.getElementById('authbtn');
-  var rolebadge = document.getElementById('rolebadge');
-
-  // 当前 SSE 流的 AbortController：切换/删除会话时中止旧流，防止旧响应继续写 DOM
-  var activeController = null;
-  function abortStream(){
-    if(activeController){ try{ activeController.abort(); }catch(e){} activeController = null; }
-  }
 
   function apiFetch(url, opts){
     opts = opts || {};
-    var h = Object.assign({}, opts.headers || {});
-    if(authToken) h['Authorization'] = 'Bearer ' + authToken;
-    opts.headers = h;
     return fetch(url, opts);
   }
-  function renderAuth(me){
-    authEnabled = !!me.auth_enabled;
-    if(!authEnabled){
-      authbar.style.display = 'none';
-      return;
-    }
-    authbar.style.display = 'flex';
-    // 角色裁剪：仿真场景切换仅 admin 可用
-    if(me.authenticated && me.role === 'admin'){ simbar.style.display = 'flex'; }
-    else { simbar.style.display = 'none'; }
-    if(me.authenticated && me.role){
-      authtoken.style.display = 'none';
-      authbtn.textContent = '退出';
-      rolebadge.textContent = '角色：' + me.role;
-      rolebadge.className = me.role;
-      rolebadge.style.display = 'inline-block';
-    }else{
-      authtoken.style.display = 'inline-block';
-      authbtn.textContent = '登录';
-      rolebadge.textContent = '';
-      rolebadge.style.display = 'none';
-    }
-  }
-  authbtn.addEventListener('click', function(){
-    if(authToken && authbtn.textContent === '退出'){
-      authToken = '';
-      localStorage.removeItem('netops_token');
-      authbar.style.display = 'none';
-      authtoken.style.display = 'inline-block';
-      authbtn.textContent = '登录';
-      rolebadge.style.display = 'none';
-      setStatus('已退出登录（未认证为 viewer）');
-      return;
-    }
-    var tok = authtoken.value.trim();
-    if(!tok){ alert('请输入访问令牌'); return; }
-    apiFetch('/api/auth/me', {headers:{'Authorization':'Bearer ' + tok}})
-      .then(function(r){ return r.json(); })
-      .then(function(me){
-        if(me.authenticated){
-          authToken = tok;
-          localStorage.setItem('netops_token', tok);
-          renderAuth(me);
-          setStatus('已登录 · 角色 ' + me.role);
-        }else{
-          alert('令牌无效或未配置对应角色');
-        }
-      })
-      .catch(function(e){ alert('登录失败：' + e.message); });
-  });
 
   function el(tag, cls, text){
     var n = document.createElement(tag);
@@ -311,10 +247,6 @@
           else appendMsg(m.role, m.content);
         });
       }
-    }).catch(function(){});
-    // 认证状态与角色裁剪
-    apiFetch('/api/auth/me').then(function(r){ return r.json(); }).then(function(me){
-      renderAuth(me);
     }).catch(function(){});
   }).catch(function(){ setStatus('后端未连接（请先启动 uvicorn）'); });
 
@@ -676,3 +608,131 @@ async function fetchMetrics() {
 }
 fetchMetrics();
 setInterval(fetchMetrics, 10000);
+// ================= 首次启动：API Key 配置弹窗 =================
+function showConfigModal(currentModel){
+  // 避免重复弹
+  if(document.getElementById('cfg-modal')) return;
+  var wrap = document.createElement('div');
+  wrap.id = 'cfg-modal';
+  wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  wrap.innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:28px;width:420px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.2);font-family:'PingFang SC','Microsoft YaHei',sans-serif;">
+      <h2 style="margin:0 0 8px;color:#2E7D32;font-size:18px;">首次使用 · 配置智谱 API Key</h2>
+      <p style="margin:0 0 16px;color:#666;font-size:13px;line-height:1.6;">
+        请到 <a href="https://open.bigmodel.cn" target="_blank" style="color:#2E7D32;">智谱开放平台</a> 创建 API Key（glm-4-flash 免费），粘贴到下面。
+        配置会保存在你电脑本地，不会上传。
+      </p>
+      <label style="display:block;font-size:13px;color:#333;margin-bottom:4px;">API Key</label>
+      <input id="cfg-key" type="password" placeholder="粘贴你的智谱 API Key" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;margin-bottom:12px;">
+      <label style="display:block;font-size:13px;color:#333;margin-bottom:4px;">模型</label>
+      <select id="cfg-model" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;margin-bottom:16px;">
+        <option value="glm-4-flash" selected>glm-4-flash（免费）</option>
+        <option value="glm-4.5-air">glm-4.5-air</option>
+        <option value="glm-4.5-flash">glm-4.5-flash</option>
+        <option value="glm-4-air">glm-4-air</option>
+        <option value="glm-4-plus">glm-4-plus</option>
+      </select>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button id="cfg-skip" style="padding:8px 16px;border:1px solid #ccc;background:#fff;border-radius:6px;cursor:pointer;font-size:13px;">跳过（用模拟模式）</button>
+        <button id="cfg-save" style="padding:8px 16px;border:none;background:#2E7D32;color:#fff;border-radius:6px;cursor:pointer;font-size:13px;">保存并重启</button>
+      </div>
+      <p id="cfg-msg" style="margin:12px 0 0;font-size:12px;color:#c00;"></p>
+    </div>`;
+  document.body.appendChild(wrap);
+  if(currentModel) wrap.querySelector('#cfg-model').value = currentModel;
+  wrap.querySelector('#cfg-skip').onclick = function(){ wrap.remove(); };
+  wrap.querySelector('#cfg-save').onclick = function(){
+    var key = wrap.querySelector('#cfg-key').value.trim();
+    var model = wrap.querySelector('#cfg-model').value;
+    if(!key){ wrap.querySelector('#cfg-msg').textContent = '请填写 API Key'; return; }
+    wrap.querySelector('#cfg-save').disabled = true;
+    fetch('/api/config/save', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({zhipu_api_key:key, zhipu_model:model})})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(d.ok){
+          wrap.querySelector('#cfg-msg').style.color = '#2E7D32';
+          wrap.querySelector('#cfg-msg').textContent = '已保存，即将重启...';
+          setTimeout(function(){ location.reload(); }, 1500);
+        } else {
+          wrap.querySelector('#cfg-msg').textContent = d.message || '保存失败';
+          wrap.querySelector('#cfg-save').disabled = false;
+        }
+      })
+      .catch(function(e){
+        wrap.querySelector('#cfg-msg').textContent = '网络错误：' + e.message;
+        wrap.querySelector('#cfg-save').disabled = false;
+      });
+  };
+}
+
+
+// ================= 设置弹窗 =================
+function showSettingsModal(){
+  if(document.getElementById('cfg-modal')) return;
+  fetch('/api/config/get').then(function(r){return r.json();}).then(function(cfg){
+    var wrap = document.createElement('div');
+    wrap.id = 'cfg-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    var keyHint = cfg.key_configured ? '已配置（当前：' + cfg.key_masked + '），留空不修改' : '粘贴智谱 API Key';
+    wrap.innerHTML =
+      '<div style="background:#fff;border-radius:12px;padding:28px;width:480px;max-width:92vw;box-shadow:0 8px 32px rgba(0,0,0,0.2);font-family:Microsoft YaHei,PingFang SC,sans-serif;max-height:90vh;overflow-y:auto;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+      '<h2 style="margin:0;color:#2E7D32;font-size:18px;">设置</h2>' +
+      '<button id="cfg-close-x" style="border:none;background:none;font-size:20px;cursor:pointer;color:#999;line-height:1;">&times;</button>' +
+      '</div>' +
+      '<label style="display:block;font-size:13px;color:#333;margin-bottom:4px;font-weight:600;">智谱 API Key</label>' +
+      '<input id="cfg-key" type="password" placeholder="' + keyHint + '" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;margin-bottom:12px;">' +
+      '<label style="display:block;font-size:13px;color:#333;margin-bottom:4px;font-weight:600;">模型</label>' +
+      '<select id="cfg-model" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;margin-bottom:12px;">' +
+      '<option value="glm-4-flash">glm-4-flash（免费）</option>' +
+      '<option value="glm-4.5-flash">glm-4.5-flash</option>' +
+      '<option value="glm-4.5-air">glm-4.5-air</option>' +
+      '<option value="glm-4-air">glm-4-air</option>' +
+      '<option value="glm-4-plus">glm-4-plus</option>' +
+      '</select>' +
+      '<label style="display:block;font-size:13px;color:#333;margin-bottom:4px;font-weight:600;">API Base URL</label>' +
+      '<input id="cfg-base" type="text" value="' + cfg.zhipu_base_url + '" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;margin-bottom:12px;">' +
+      '<label style="display:block;font-size:13px;color:#333;margin-bottom:4px;font-weight:600;">RAG 知识库目录</label>' +
+      '<input id="cfg-kb" type="text" value="' + cfg.kb_dir + '" placeholder="留空用默认" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;margin-bottom:16px;">' +
+      '<div style="font-size:11px;color:#888;margin:-10px 0 16px;">修改知识库路径后需要重启应用并重新索引。</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+      '' +
+      '<button id="cfg-save" style="padding:8px 16px;border:none;background:#2E7D32;color:#fff;border-radius:6px;cursor:pointer;font-size:13px;">保存</button>' +
+      '</div>' +
+      '<p id="cfg-msg" style="margin:12px 0 0;font-size:12px;color:#c00;"></p>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    if(cfg.zhipu_model) wrap.querySelector('#cfg-model').value = cfg.zhipu_model;
+
+    function closeModal(){ wrap.remove(); }
+    
+    wrap.querySelector('#cfg-close-x').onclick = closeModal;
+    wrap.onclick = function(e){ if(e.target === wrap) closeModal(); };
+
+    wrap.querySelector('#cfg-save').onclick = function(){
+      var key = wrap.querySelector('#cfg-key').value.trim();
+      var model = wrap.querySelector('#cfg-model').value;
+      var base = wrap.querySelector('#cfg-base').value.trim();
+      var kb = wrap.querySelector('#cfg-kb').value.trim();
+      wrap.querySelector('#cfg-save').disabled = true;
+      fetch('/api/config/save', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({zhipu_api_key:key, zhipu_model:model, zhipu_base_url:base, kb_dir:kb})})
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if(d.ok){
+            wrap.querySelector('#cfg-msg').style.color = '#2E7D32';
+            wrap.querySelector('#cfg-msg').textContent = '已保存，即将重新加载...';
+            setTimeout(function(){ location.reload(); }, 800);
+          } else {
+            wrap.querySelector('#cfg-msg').textContent = d.message || '保存失败';
+            wrap.querySelector('#cfg-save').disabled = false;
+          }
+        })
+        .catch(function(e){
+          wrap.querySelector('#cfg-msg').textContent = '网络错误：' + e.message;
+          wrap.querySelector('#cfg-save').disabled = false;
+        });
+    };
+  }).catch(function(e){ alert('读取配置失败：' + e.message); });
+}
+
+document.getElementById('settingsBtn').addEventListener('click', showSettingsModal);

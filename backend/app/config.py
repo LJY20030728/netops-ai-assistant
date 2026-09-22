@@ -1,10 +1,34 @@
-"""应用配置：从环境变量 / .env 文件读取。"""
+"""应用配置：从环境变量 / .env 文件 / 用户配置目录读取。"""
+import json
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 固定指向 backend/，避免因启动目录不同而找不到配置
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+# 用户配置目录：%APPDATA%\NetOpsAssistant（打包后用户可写，源码目录只读）
+def user_config_path() -> Path:
+    base = os.environ.get("APPDATA") or str(Path.home())
+    return Path(base) / "NetOpsAssistant" / "config.json"
+
+
+def _load_user_config() -> dict:
+    r"""从 %APPDATA%\NetOpsAssistant\config.json 读用户首次填写的配置。"""
+    p = user_config_path()
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+# 把用户配置合并到环境变量（优先级高于 .env）
+for _k, _v in _load_user_config().items():
+    if _v:
+        os.environ.setdefault(_k, str(_v))
 
 
 class Settings(BaseSettings):
