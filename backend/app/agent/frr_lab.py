@@ -134,8 +134,16 @@ class FrrLab:
         return f"[FRR:{self.device.name}] 注入故障「{cfg['label']}」({iface})\n{out}\n--- 验证 ---\n{await self._run(cfg['verify'])}"
 
     async def recover(self, fault: str, iface: str) -> str:
-        """恢复故障：执行 recover 命令链，返回 verify 输出。"""
+        """恢复故障：link_down 走 docker restart（接口 shutdown 后 SSH 也断了），其他故障走 vtysh recover 命令链。"""
         cfg = self._resolve(fault, iface)
+        if fault == "link_down":
+            # 接口 shutdown 后管理通道也断了，vtysh 连不上；docker restart 从只读挂载恢复配置
+            await self._run(f"docker restart {self.device.name}")
+            await asyncio.sleep(8)  # 等 FRR 进程和 OSPF 收敛
+            verify = await self._run(cfg["verify"])
+            return (f"[FRR:{self.device.name}] 恢复故障「{cfg['label']}」({iface})\n"
+                    f"已 docker restart（接口 shutdown 导致 SSH 不可达，从只读挂载恢复配置）\n"
+                    f"--- 验证 ---\n{verify}")
         out = await self._run(self._vtysh(cfg["recover"]))
         return f"[FRR:{self.device.name}] 恢复故障「{cfg['label']}」({iface})\n{out}\n--- 验证 ---\n{await self._run(cfg['verify'])}"
 

@@ -196,6 +196,39 @@ async def _frr_fault_inject(args: dict) -> str:
     raise DeviceError("action 必须为 dry_run/inject/recover/status/show")
 
 
+@register_tool(
+    name="frr_lab_healthcheck",
+    description="一键读取 FRR 实验室三台容器（frr1/frr2/frr3）的真实状态：OSPF 邻居表、BGP 邻居表、路由表，并判定健康度。排查 frr 连接/邻居异常时**优先调用此工具**，不要逐个手动拼 vtysh 命令。",
+    parameters={},
+    roles=["admin", "operator"],
+)
+async def _frr_lab_healthcheck(args: dict) -> str:
+    from app.agent.devices import find_device
+    lines = ["=== FRR 实验室健康检查（带外 docker exec） ==="]
+    for dev_name in ("frr1", "frr2", "frr3"):
+        try:
+            dev = find_device(dev_name)
+            lab = FrrLab(dev)
+            st = await lab.status_all()
+            parsed = st.get("parsed", {})
+            peers = parsed.get("ospf_peers", []) + parsed.get("bgp_peers", [])
+            healthy = parsed.get("healthy")
+            mark = "OK" if healthy else ("FAIL" if healthy is False else "?")
+            lines.append(f"\n[{dev_name}] 健康度={mark}")
+            for p in peers:
+                if "id" in p:
+                    lines.append(f"  OSPF 邻居 {p['id']} 状态={p['state']} 地址={p.get('address','')}")
+                else:
+                    lines.append(f"  BGP 邻居 {p['peer']} AS={p['as']} 状态={p['state']}")
+            for r in parsed.get("routes", [])[:6]:
+                lines.append(f"  路由 {r.strip()}")
+        except Exception as exc:  # noqa: BLE001
+            lines.append(f"\n[{dev_name}] 读取失败: {exc}")
+    lines.append("\n=== 判定说明 ===")
+    lines.append("OK=关键邻居状态正常；FAIL=邻居为空或处于 Down/Active/Attempt 等异常态；?=数据不足")
+    return "\n".join(lines)
+
+
 # ===== 对外接口（保持兼容）=====
 
 TOOLS = registry.metadata()
