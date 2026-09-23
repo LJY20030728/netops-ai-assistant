@@ -270,7 +270,7 @@ cd backend
 pytest tests/ -q
 ```
 
-55 个用例覆盖：意图判定、会话持久化、故障状态机、路由冒烟、命令注入拦截、非法 session_id、空白消息、注入检测、拓扑健康度判定。
+62 个用例覆盖：意图判定、会话持久化、故障状态机、路由冒烟、命令注入拦截、非法 session_id、空白消息、注入检测、拓扑健康度判定。
 
 ## 配置项（backend/.env）
 
@@ -296,7 +296,7 @@ netops-assistant/
 │   │   ├── llm/               # LLM provider 抽象（智谱/豆包）
 │   │   └── security/          # 注入检测/RBAC/限流/审计
 │   ├── knowledge_base/       # 排障手册语料
-│   └── tests/                # pytest（55 用例）
+│   └── tests/                # pytest（62 用例）
 ├── frontend/
 │   ├── index.html            # 单页应用（HTML 结构）
 │   ├── styles.css            # 独立样式（纳西妲绿白主题）
