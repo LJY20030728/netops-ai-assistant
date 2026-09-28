@@ -9,6 +9,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688)
 ![PyWebView](https://img.shields.io/badge/pywebview-5.x-green)
 ![pytest](https://img.shields.io/badge/tests-62%20passed-brightgreen)
+![CI](https://github.com/LJY20030728/netops-ai-assistant/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -57,12 +58,12 @@ NetOps AI Assistant 把这两件事接起来：
 - **强制取证**：诊断类问题若工具调用少于 3 次就想 `finish`，会被拦截并要求继续取证（带下一步取证方向提示：先 ping → 查接口 → 查邻居/ACL/ARP → 查时间线），由最大步数兜底防死循环；
 - **容错解析**：模型输出常有 markdown 围栏、多余前后缀、"思考文字+JSON"拼接，解析器做了三级兜底（整体 JSON → 提取花括号片段 → 用片段前的裸工具名补全）；
 - **过程可见**：每一步的原始决策和工具调用结果通过 SSE 实时推到前端，用户能看到模型"先查了什么、再查了什么"；
-- **运行轨迹落盘（Agent Trace）**：每次 Agent 运行按 session_id 写 backend/data/traces/<session_id>/steps.jsonl，记录每一步的类型（thought/tool_call/hallucinated_tool/hallucinated_device/finish/error）、LLM 原始决策、工具名与参数、执行耗时（ms）、结果预览、总耗时，结束时再写一份 summary.json。这使得"模型为什么这步调了这个工具"可复盘，而不是跑完即焚；
+- **运行轨迹落盘（Agent Trace）**：每次 Agent 运行按 session_id 写 backend/data/traces/<session_id>/steps.jsonl，记录每一步的类型（thought/tool_call/hallucinated_tool/hallucinated_device/finish/error）、LLM 原始决策、工具名与参数、执行耗时（ms）、结果预览、总耗时，结束时再写一份 summary.json。这使得"模型为什么这步调了这个工具"可复盘，而不是跑完即焚；
 - **工具名/设备名幻觉前置拦截**：LLM 输出的工具名若不在注册表中、设备名若不在 devices.json 中，在真正发起 SSH 之前就回灌纠正（"你调用了不存在的工具 X，可用工具是 [...]"），最多重试 2 次。相比"发了命令再 catch 异常"，这把幻觉挡在设备操作层之外。
 
 ### 2. 工具注册表与权限
 
-`backend/app/agent/tools.py` 用 `@register_tool` 装饰器自动收集工具，新增工具只需写一个 async 函数，无需改调度逻辑。当前 6 个工具：
+`backend/app/agent/tools.py` 用 `@register_tool` 装饰器自动收集工具，新增工具只需写一个 async 函数，无需改调度逻辑。当前 7 个工具：
 
 | 工具 | 作用 | 允许角色 |
 |---|---|---|
@@ -71,6 +72,7 @@ NetOps AI Assistant 把这两件事接起来：
 | `search_runbook` | 检索排障知识库 | viewer/operator/admin |
 | `get_event_timeline` | 故障事件时间线 | operator/admin |
 | `frr_fault_inject` | FRR 故障注入/恢复/带外查看 | admin |
+| `frr_lab_healthcheck` | 一键读三台 FRR 容器的 OSPF/BGP/路由表并判定健康度 | viewer/operator/admin |
 
 命令注入做了**二道防线**：`_guard_cli` 在工具入口拒绝 shell 元字符（`&&`、`|`、`;`、`$()`、反引号等），`frr_lab._run` 在执行前再拦一次。
 
@@ -100,7 +102,7 @@ NetOps AI Assistant 把这两件事接起来：
   - `ospf_cost`：cost 调到 10000 → SPF 重选路径；
   - `bgp_neighbor_down`：BGP 邻居 shutdown → 会话 Idle、前缀停止交换；
 - 健康度判定有实测教训：直连路由在接口 shutdown 后仍存在，会掩盖故障，因此健康判定只看**关键协议邻居**（OSPF/BGP 状态），不看直连路由；
-- **故障注入 dry-run gate（安全门）**：``frr_fault_inject`` 新增 ``action=dry_run``，返回将执行的 vtysh 命令链、预期邻居/路由影响、逆操作命令，不真执行；随后 ``action=inject`` 会检查 ``fault_state`` 里是否有最近 60 秒内同一 (device, fault, iface) 的 dry-run 记录，没有则直接拒绝并回灌"请先 dry_run"。这把"先预览再动手"做成代码层强制，模型想跳过也跳不过；recover/status/show 不受此门约束（recover 是安全操作、status/show 只读）。
+- **故障注入 dry-run gate（安全门）**：`frr_fault_inject` 新增 `action=dry_run`，返回将执行的 vtysh 命令链、预期邻居/路由影响、逆操作命令，不真执行；随后 `action=inject` 会检查 `fault_state` 里是否有最近 60 秒内同一 (device, fault, iface) 的 dry-run 记录，没有则直接拒绝并回灌"请先 dry_run"。这把"先预览再动手"做成代码层强制，模型想跳过也跳不过；recover/status/show 不受此门约束（recover 是安全操作、status/show 只读）。
 
 ### 5. 安全与工程化
 
@@ -228,11 +230,11 @@ flowchart TB
 
 ### 当前架构边界
 
-- **单进程单实例（有意为之，非缺陷）**：FastAPI 单 uvicorn 进程，所有可变状态（会话 JSONL、fault_state、trace、向量索引）落本地文件系统，关键写路径已加进程内 ``threading.Lock`` 串行化（session_store/fault_state/audit/ratelimit/BM25）。``/api/health`` 暴露 ``process.pid`` 与 ``started_at`` 以明示单 worker。不引入 Redis/PG 是因为这是单机排障演练工具，多副本一致性在这个规模下是过度工程；将来要扩展，状态层接口已在 ``session_store``/``store``/``fault_state`` 三个门面后，换 SQLite/Redis 不动业务代码。
+- **单进程单实例（有意为之，非缺陷）**：FastAPI 单 uvicorn 进程，所有可变状态（会话 JSONL、fault_state、trace、向量索引）落本地文件系统，关键写路径已加进程内 `threading.Lock` 串行化（session_store/fault_state/audit/ratelimit/BM25）。`/api/health` 暴露 `process.pid` 与 `started_at` 以明示单 worker。不引入 Redis/PG 是因为这是单机排障演练工具，多副本一致性在这个规模下是过度工程；将来要扩展，状态层接口已在 `session_store`/`store`/`fault_state` 三个门面后，换 SQLite/Redis 不动业务代码。
 - **推理侧外置**：对话模型与可选 embedding 走智谱 OpenAI 兼容端点，本仓库不含本地推理运行时；
 - **受控拓扑规模**：真实设备为 3 台 FRR 容器，故障目录按设备-接口白名单（`_LEGAL`）约束，未做多区域自治系统或跨厂商扩展；
 - **注入检测为静态规则**：high/medium 分级基于正则模式，未引入语义级注入判定或工具输出端的二次校验；
-- **工程化外扩项未接入**：pytest 在本地执行，未配置 CI/CD 流水线、容器化后端镜像与指标/日志外送。
+- **工程化外扩项未接入**：GitHub Actions CI（`.github/workflows/ci.yml`）已配置——push/PR 到 main 即在 ubuntu-latest 上跑 `pytest -m "not dock" --cov=app`，用 `MOCK_LLM=true` 离线执行、`~/.cache/huggingface` 缓存 bge 模型；容器化后端镜像与指标/日志外送（Prometheus/Loki）未接入。
 
 系统定位为网络运维 Agent 的闭环验证平台：聚焦"LLM 经工具调用操作真实协议栈并对结果负责"这一条链路，上述边界即该验证范围的工程切面。
 
