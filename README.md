@@ -8,7 +8,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688)
 ![PyWebView](https://img.shields.io/badge/pywebview-5.x-green)
-![pytest](https://img.shields.io/badge/tests-62%20passed-brightgreen)
+![pytest](https://img.shields.io/badge/tests-58%20passed%20%283%20skipped%29-brightgreen)
 ![CI](https://github.com/LJY20030728/netops-ai-assistant/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -107,7 +107,7 @@ NetOps AI Assistant 把这两件事接起来：
 ### 5. 安全与工程化
 
 - **提示词注入检测**：`security/injection.py` 用正则分级拦截"忽略之前指令/泄露系统提示词"等模式，high 级直接阻断；
-- **RBAC**：Bearer token 映射 viewer/operator/admin 三角色，`viewer` 只读知识库、`admin` 才能注入故障；
+- **RBAC**：`auth.py` 实现 viewer/operator/admin 三级角色与 `require_role` 依赖；**本地桌面应用（127.0.0.1）loopback 来源自动信任为 admin**，无登录界面；远程访问需 `Authorization: Bearer <token>`，token→角色在 `API_TOKENS` 配置；
 - **限流**：`/api/chat` 每 IP 滑动窗口 30 次/分钟；
 - **审计**：关键操作写 `backend/data/audit.jsonl`；
 - **鲁棒性**：空白消息 422、非法 session_id 优雅处理、异常不向用户泄露栈信息（细节进审计日志）。
@@ -213,7 +213,7 @@ flowchart TB
 | Embedding | **本地 bge-small-zh-v1.5** | API embedding 按量计费且知识库内容要外传；本地模型 512 维、CPU 可跑、零边际成本。打包版无 torch 时再降级为纯哈希向量，保证功能可用。 |
 | 向量库 | **NumpyVectorStore（.npy）** | 单机演示不需要 Qdrant/FAISS 的服务化部署；门面层 `store.py` 保留了后端接口，将来要换 Qdrant 只改配置。 |
 | 网络仿真 | **Docker + FRR** | 用户机器没装 EVE-NG/GNS3；FRR 是真实路由协议栈（真 OSPF 邻接、真路由表），容器秒级起停、跨平台，比"脚本模拟设备输出"真实得多。 |
-| 桌面壳 | **pywebview** | 同一台机器上 Python 栈统一；Electron 体积上百 MB 且需要 Node 工具链，Tauri 要 Rust。pywebview 调系统 WebView2，最终包体约 125MB（PyInstaller onedir，含运行时与前端资源）。 |
+| 桌面壳 | **pywebview** | 同一台机器上 Python 栈统一；Electron 体积上百 MB 且需要 Node 工具链，Tauri 要 Rust。pywebview 调系统 WebView2，Inno Setup 产出的 setup.exe 约 48MB（onedir 解压后约 125MB，含运行时与前端资源）。 |
 | 重排（rerank） | **接入但默认关闭** | 60 条领域评测实测通用 rerank 是负优化；保留接入路径，不迷信组件数量。 |
 
 ---
@@ -272,7 +272,7 @@ cd backend
 pytest tests/ -q
 ```
 
-62 个用例覆盖：意图判定、会话持久化、故障状态机、路由冒烟、命令注入拦截、非法 session_id、空白消息、注入检测、拓扑健康度判定。
+58 个用例覆盖：意图判定、会话持久化、故障状态机、路由冒烟、命令注入拦截、非法 session_id、空白消息、注入检测、拓扑健康度判定。
 
 ## 配置项（backend/.env）
 
@@ -298,7 +298,7 @@ netops-assistant/
 │   │   ├── llm/               # LLM provider 抽象（智谱/豆包）
 │   │   └── security/          # 注入检测/RBAC/限流/审计
 │   ├── knowledge_base/       # 排障手册语料
-│   └── tests/                # pytest（62 用例）
+│   └── tests/                # pytest（58 用例）
 ├── frontend/
 │   ├── index.html            # 单页应用（HTML 结构）
 │   ├── styles.css            # 独立样式（纳西妲绿白主题）
@@ -315,7 +315,7 @@ netops-assistant/
 
 NetOps AI Assistant is an AI-agent copilot for network troubleshooting. Rather than answering from parametric memory, its hand-written ReAct loop drives an LLM to **collect evidence from real devices** (Netmiko CLI / out-of-band `docker exec vtysh`) before concluding. A three-container FRR lab runs real OSPF + eBGP, and the agent can inject and recover reversible faults (`link_down` / `ospf_cost` / `bgp_neighbor_down`) while observing genuine neighbor and route changes.
 
-Every Agent run writes a JSONL trace under `backend/data/traces/<session_id>/` (thoughts, tool calls, latency, hallucinated-tool/device rejections, final summary), and hallucinated tool or device names are rejected before any SSH command is sent. The retrieval layer combines a from-scratch BM25 (CJK unigram+bigram tokenization), local `bge-small-zh` embeddings, and RRF fusion, with query expansion and alert routing. A 96-query domain evaluation drove the decision to keep the third-party reranker disabled (it was a net negative). A security layer adds prompt-injection heuristics, three-role RBAC, rate limiting, and an audit trail.
+Every Agent run writes a JSONL trace under `backend/data/traces/<session_id>/` (thoughts, tool calls, latency, hallucinated-tool/device rejections, final summary), and hallucinated tool or device names are rejected before any SSH command is sent. The retrieval layer combines a from-scratch BM25 (CJK unigram+bigram tokenization), local `bge-small-zh` embeddings, and RRF fusion, with query expansion and alert routing. A 96-query domain evaluation drove the decision to keep the third-party reranker disabled (it was a net negative). A security layer adds prompt-injection heuristics, three-role RBAC (loopback desktop requests auto-trusted as admin; remote callers need a Bearer token), rate limiting, and an audit trail.
 
 The stack is intentionally dependency-light: no LangChain/LangGraph, no Qdrant server, no Node build chain. The desktop shell is pywebview, packaged with PyInstaller; when torch is absent the embedding layer degrades to a hash vector so the build stays small. The system implements the closed loop of LLM tool-use against a real routing stack, scoped to a single node.
 
