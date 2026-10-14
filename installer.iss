@@ -2,7 +2,7 @@
 ; 用 Inno Setup 6 编译
 
 #define MyAppName "NetOps AI Assistant"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "LJY"
 #define MyAppExeName "NetOpsLauncher.exe"
 
@@ -44,7 +44,6 @@ Name: "{commondesktop}\NetOps AI Assistant"; Filename: "{app}\{#MyAppExeName}"; 
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch NetOps AI Assistant now"; Flags: nowait postinstall skipifsilent
 
 [Code]
-// Check Docker Desktop before install
 function InitializeSetup(): Boolean;
 var
   ResultCode: Integer;
